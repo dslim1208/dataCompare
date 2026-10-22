@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.DS_Store
+samples/big_*.csv
+samples/million_*.csv
+samples/large_*.csv

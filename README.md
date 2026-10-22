@@ -1,0 +1,254 @@
+# dataCompare
+
+폐쇄망에서 사용하는 브라우저 기반 CSV 비교·검증 도구입니다. 두 CSV를 KEY 기준으로 비교해 일치(MATCH)·변경(MODIFIED)·추가(ADDED)·삭제(DELETED)를 판정하고, 결과를 조회·다운로드합니다. 모든 처리는 사용자 PC의 브라우저 안에서 DuckDB-WASM으로 수행하며 CSV는 서버로 전송되지 않습니다.
+
+## 사용 방법
+
+1. **CSV 파일 선택**: Source(기준)와 Target(비교 대상) CSV를 각각 선택합니다. 파일명·크기, 행 수, 컬럼, 미리보기 20행이 표시됩니다. 첫 행이 컬럼명이 아니면 체크를 해제합니다. × 버튼으로 파일을 제거합니다.
+2. **KEY 및 컬럼 매핑**: 이름이 같은 컬럼은 자동 연결됩니다(대소문자 무시). 이름이 다른 컬럼은 "+ 매핑 추가"로 연결합니다(예: `USER_ID` ↔ `USER_NO`). 비교 기준 컬럼에 KEY를 체크합니다. 여러 개를 체크하면 복합 KEY입니다. 표기가 다른 시스템끼리 비교할 때는 컬럼별 비교 규칙(공백 무시·숫자·날짜)을 고릅니다. 매핑하지 않은 컬럼은 비교에서 제외됩니다.
+3. **KEY 검증**: NULL KEY, 빈 문자열 KEY, 중복 KEY가 하나라도 있으면 실패하며 예시를 보여줍니다. 데이터를 정리하거나 KEY를 바꿔 다시 검증합니다.
+4. **비교 실행**: 검증을 통과하면 "비교 실행"으로 비교하고 요약 건수를 확인합니다.
+5. **결과 조회**: 상태 버튼으로 필터링하고 이전/다음으로 페이지(50건)를 이동합니다. 행을 클릭하면 컬럼별 Source/Target 값이 표시되며 변경된 컬럼은 강조됩니다.
+6. **다운로드**: 전체 결과, 추가, 삭제, 변경 데이터를 CSV로 내려받습니다.
+
+새로고침하면 불러온 데이터와 결과는 사라집니다.
+
+## 배포 (폐쇄망)
+
+인터넷이 되는 PC에서 빌드한 뒤 `dist/` 폴더만 내부망 서버에 올립니다. 실행 중에는 인터넷, CDN, 외부 API, DB 서버, 백엔드가 필요하지 않습니다.
+
+```sh
+npm ci
+npm run build
+```
+
+- `dist/` 전체(약 75 MB)를 그대로 올립니다. `dist/assets/`의 `.wasm`과 Worker `.js`가 빠지면 "DuckDB 초기화 실패"가 표시됩니다. 수정 후에는 다시 빌드해 `dist/`를 통째로 교체합니다(파일명이 빌드마다 바뀝니다).
+- 하위 경로(예: `http://서버/datacompare/`) 배포를 지원합니다. HTTPS는 필수가 아닙니다.
+- 서버 부하는 처음 접속 시 정적 파일 전송뿐입니다. 성능은 사용자 PC에 좌우됩니다.
+- 엔진은 브라우저에 맞춰 EH(최신)·MVP(구형) 중 하나만 내려받습니다(약 35~40 MB, 이후 캐시).
+
+### 서버 설정
+
+필수는 `.wasm` → `application/wasm` MIME입니다. gzip을 켜면 처음 전송량이 약 8 MB로 줄어듭니다. `index.html`은 캐시하지 않아야 재배포가 바로 반영됩니다.
+
+Nginx (`grep wasm /etc/nginx/mime.types`로 MIME 존재를 먼저 확인하고, 없으면 `mime.types`에 `application/wasm wasm;`을 추가):
+
+```nginx
+server {
+	listen 80;
+	root /var/www/datacompare;
+	include mime.types;
+	gzip on;
+	gzip_types application/wasm application/javascript text/css;
+	location = /index.html {
+		add_header Cache-Control "no-cache";
+	}
+	location /assets/ {
+		add_header Cache-Control "public, max-age=2592000, immutable";
+	}
+}
+```
+
+IIS (`dist/`에 `web.config`로 추가):
+
+```xml
+<configuration>
+	<system.webServer>
+		<staticContent>
+			<remove fileExtension=".wasm" />
+			<mimeMap fileExtension=".wasm" mimeType="application/wasm" />
+		</staticContent>
+	</system.webServer>
+</configuration>
+```
+
+CSP를 쓰는 경우 `script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'`처럼 같은 출처 Worker와 WASM 실행을 허용해야 합니다(확인 필요: 사내 CSP 정책에 맞춰 검증).
+
+### 서버 없이 로컬 PC에서 실행
+
+`file://`(index.html 더블클릭)은 브라우저 보안 정책상 Worker·WASM이 막혀 지원하지 않으며 우회하지 않습니다. 로컬에서는 정적 서버가 필요합니다.
+
+- Python: `dist` 폴더에서 `python3 -m http.server 8080 --bind 127.0.0.1` → http://127.0.0.1:8080
+- Node.js + 프로젝트 의존성: `npm run preview` → http://127.0.0.1:4173
+
+### 폐쇄망 실행 체크리스트
+
+- [ ] 사용자 PC 브라우저(Chrome/Edge 최신)에서 접속 시 "DuckDB v… 준비 완료" 표시
+- [ ] 개발자 도구 Network 탭에서 내부 서버 외 요청 0건, `.wasm` 응답 Content-Type이 `application/wasm`
+- [ ] `samples/basic_*.csv`로 비교: MATCH 1 / MODIFIED 3 / ADDED 1 / DELETED 1, 다운로드 4종 정상, Excel에서 한글 정상
+- [ ] `samples/big_*.csv`(100 MB × 2)로 로딩·비교·다운로드 시간과 작업 관리자의 Chrome 메모리 기록
+- [ ] 새로고침 후 데이터가 남지 않음
+
+## 권장 사용 환경
+
+| 항목 | 권장 |
+|---|---|
+| 브라우저 | Chrome 또는 Edge 최신 (검증은 Chrome만 수행) |
+| 메모리 | 16 GB 이상 권장. 100 MB × 2 비교 시 Chrome 전체 최대 약 2.4 GB 사용(다운로드 포함) |
+| 파일 크기 | 파일당 100 MB 이하는 측정 범위. 200~300 MB는 동작 가능성이 높으나 확인 필요. 400 MB 이상은 DuckDB-WASM 4 GB 한도로 실패할 수 있음 |
+
+i5-14400 · 16 GB PC 예상치(확인 필요, 단일 코어 성능 차이로 개발 PC 측정값의 약 1.5~2배): 100 MB 파일 로딩 1.2~1.6초, 비교 0.5~0.6초, 페이지 이동 0.1초 내외, 190 MB 전체 결과 다운로드 약 2초.
+
+## 기능과 데이터 정책
+
+### CSV 로딩
+
+- Source / Target 독립 파일 선택, 파일명·크기 표시
+- 헤더 유무 설정, DuckDB 테이블 등록, 컬럼 목록 및 타입, 전체 데이터 행 수
+- 최대 20행 미리보기 및 NULL / 빈 문자열 구분 표시
+- DuckDB 버전 조회를 통한 초기화 확인, 초기화·CSV 오류 원인 표시
+- UTF-8, 쉼표 구분, 큰따옴표 인용 및 인용 내부 줄바꿈 지원
+- `all_varchar=true`: `001`, `01000`, `1.00`, 날짜 문자열을 형 변환 없이 보존
+- 비인용 빈 필드는 NULL, 인용된 `""`는 빈 문자열. 텍스트 `NULL`은 문자열로 보존합니다. CSV에 보편적인 NULL 표현 규칙이 없으므로 이 정책을 고정했습니다.
+- CSV 구문상의 인용/이스케이프는 파싱합니다. 파일 바이트 자체를 원본 그대로 보관한다는 의미는 아닙니다.
+- SQL 테이블·등록 경로는 앱의 고정 식별자만 사용하며 파일명은 SQL에 넣지 않습니다. 컬럼명은 적재된 테이블의 실제 컬럼과 일치할 때만 큰따옴표 식별자(`"` → `""` 이스케이프)로 사용합니다.
+- 로딩이 실패하면 해당 쪽 테이블을 삭제해 이전 파일 데이터가 남지 않게 합니다. 같은 파일을 다시 선택해도 다시 읽습니다.
+
+### KEY 및 컬럼 매핑
+
+- 두 파일이 모두 로딩되면 매핑 영역이 표시됩니다. 이름이 같은 컬럼은 대소문자를 무시하고 자동 연결합니다.
+- 매핑 추가·삭제, Source/Target 컬럼 변경(예: `USER_ID` ↔ `USER_NO`), KEY 선택(여러 개 선택 시 복합 KEY)을 지원합니다.
+- 매핑되지 않은 컬럼은 비교 제외 컬럼으로 표시합니다. KEY 미선택, 빈 매핑, 같은 컬럼 중복 매핑은 검증 전에 막습니다.
+- KEY 검증은 Source/Target 각각 DuckDB SQL로 NULL KEY 행, 빈 문자열 KEY 행, 중복 KEY 수·행 수와 중복 예시 최대 10개를 조회합니다. 빈 문자열 KEY는 데이터 오류로 보고 실패 처리합니다. 중복 검사는 NULL·빈 KEY 행을 제외하고 수행합니다.
+- 하나라도 있으면 실패로 표시합니다. 파일이나 매핑을 바꾸면 이전 검증 결과는 무효화됩니다.
+- 파일 선택 영역에 파일명·크기를 표시하고, × 버튼으로 파일과 해당 DuckDB 테이블을 제거할 수 있습니다.
+
+### 비교 엔진
+
+- KEY 검증을 통과해야 비교 실행 영역이 표시됩니다. Source와 Target을 KEY로 `FULL OUTER JOIN`하여 판정합니다.
+  - ADDED: Target에만 존재 / DELETED: Source에만 존재
+  - MODIFIED: KEY가 같고 비교 컬럼(KEY가 아닌 매핑 컬럼) 중 하나 이상이 다름 / MATCH: 모두 같음
+- 기본 규칙("그대로")은 문자열 그대로 `IS DISTINCT FROM`으로 비교합니다. NULL과 NULL은 같고, NULL과 빈 문자열은 다르며, `01000`과 `1000`, 앞뒤 공백 차이도 다른 값으로 판정합니다. 매핑하지 않은 컬럼은 비교하지 않습니다.
+
+### 컬럼별 비교 규칙
+
+매핑 행마다 비교 규칙을 고를 수 있습니다. 규칙은 **비교할 때만** 적용되며 미리보기·결과 목록·상세·다운로드에는 항상 원본 값이 나옵니다. KEY 컬럼에 규칙을 지정하면 KEY 검증(빈 값·중복)과 KEY 연결도 같은 규칙으로 판단합니다.
+
+| 규칙 | 같다고 보는 예 | 방식 |
+|---|---|---|
+| 그대로 (기본값) | 완전히 같은 문자열만 | 문자열 비교 |
+| 앞뒤 공백 무시 | `홍길동 ` = `홍길동` | `trim` 후 비교 (공백 문자만, 탭 제외) |
+| 숫자 (콤마 무시) | `10,000` = `10000` = `10000.00`, `1,500.50` = `1500.5` | 콤마 제거 후 숫자로 비교 |
+| 날짜 (`-` `.` `/` 무시) | `2026-10-01` = `2026.10.01` = `2026/10/01` = `20261001` | 구분자 제거 후 연월일 8자리를 날짜로 비교 |
+
+- 숫자·날짜로 바꿀 수 없는 값(예: `abc`, `2026-1-5`, 시간이 포함된 값)은 원본 문자열로 비교합니다. NULL과 빈 문자열은 규칙과 관계없이 계속 다른 값입니다.
+- 숫자는 빠른 비교를 위해 `DOUBLE`을 쓰며, 콤마를 뺀 길이가 15자를 넘는 값은 정밀도 손실을 피하려고 숫자 변환 없이 원본 문자열로 비교합니다. 지수 표기(`1e3`)도 숫자로 인식합니다.
+- 날짜는 연-월-일 순서만 지원합니다. `10/01/2026` 같은 다른 순서는 변환하지 않습니다.
+- 결과는 DuckDB `comparison` 테이블에 원본 행 위치(`rowid`), 상태, 변경된 매핑 번호 목록만 저장합니다. 값은 복사하지 않으며 화면에 필요한 페이지만 원본과 연결해 조회합니다.
+- Source/Target 전체 행 수와 상태별 건수를 표시합니다. 파일을 다시 읽거나 제거하면 비교 결과 테이블을 삭제하고, 매핑을 바꾸면 비교 영역을 초기화합니다.
+
+### 결과 화면
+
+- 상태 필터(전체/MATCH/MODIFIED/ADDED/DELETED, 버튼에 건수 표시)와 페이지당 50건 조회를 제공합니다. 정렬은 Source 파일 순서, 그 뒤에 ADDED 행이 Target 파일 순서로 나옵니다.
+- 페이지마다 `comparison`에서 50건만 고른 뒤 `rowid`로 원본 테이블과 연결해 KEY 값을 가져옵니다. 브라우저로 전달되는 행은 현재 페이지뿐입니다.
+- 목록에는 상태, KEY 값, 변경 컬럼명이 표시됩니다. 행을 클릭(또는 Enter)하면 매핑된 모든 컬럼의 Source/Target 값을 상세 표로 보여주고 변경된 컬럼을 강조합니다. ADDED/DELETED는 없는 쪽을 "없음"으로 표시합니다.
+
+### 결과 다운로드
+
+| 버튼 | 내용 |
+|---|---|
+| 전체 결과 | `STATUS`, KEY, `CHANGED_COLUMNS`, 비교 컬럼별 `컬럼 (SOURCE)` / `컬럼 (TARGET)` 값. 화면 목록과 같은 순서 |
+| 추가 데이터 | Target에만 있는 행을 Target 원본의 모든 컬럼 그대로 |
+| 삭제 데이터 | Source에만 있는 행을 Source 원본의 모든 컬럼 그대로 |
+| 변경 데이터 | `KEY`, `COLUMN_NAME`, `SOURCE_VALUE`, `TARGET_VALUE` — 변경된 컬럼마다 1행 |
+
+- 비교 결과 10만 행 단위로 DuckDB `COPY ... TO`를 실행해 조각 CSV를 만들고, 각 조각을 바로 Blob으로 바꾼 뒤 이어 붙여 내려받습니다. 결과 전체를 JS 행 배열이나 하나의 메모리 버퍼로 만들지 않습니다. 조각 경계는 비교 시 저장한 표시 순서(`ord`)를 사용해 순서와 헤더 1회를 보장합니다.
+- 입력과 같은 규칙으로 NULL은 빈 필드, 빈 문자열은 `""`로 써서 둘을 구분합니다. 쉼표·줄바꿈·따옴표는 큰따옴표로 인용합니다.
+- Excel에서 한글이 깨지지 않도록 UTF-8 BOM을 붙입니다. 파일명은 `dataCompare_<구분>_YYYYMMDD_HHMMSS.csv`입니다. 건수가 0인 항목은 버튼이 비활성화됩니다.
+
+DuckDB 공식 근거: [File 핸들 등록](https://duckdb.org/docs/lts/clients/wasm/data_ingestion), [CSV 읽기 옵션](https://www.duckdb.org/docs/lts/data/csv/overview).
+
+## 구조
+
+```text
+src/
+  App.vue                     화면 구성 및 초기화 상태
+  main.ts                     Vue 진입점
+  style.css                   반응형 업무용 UI
+  components/CsvPanel.vue     파일 선택 및 미리보기
+  components/MappingPanel.vue KEY·컬럼 매핑 및 KEY 검증 결과
+  components/ComparePanel.vue 비교 실행 및 건수 집계
+  components/ResultPanel.vue  상태 필터, 페이지 조회, 상세 비교
+  components/CellValue.vue    NULL / 빈 문자열 구분 표시
+  components/DownloadPanel.vue 결과 CSV 다운로드
+  services/duckdb/client.ts   로컬 엔진 초기화, CSV 로딩, KEY 검증·비교·결과 조회·CSV 생성 쿼리, 연결 정리
+  services/comparison/mapping.ts  자동 매핑, 매핑 오류 검사
+  types/csv.ts                CSV 메타데이터·매핑·검증 결과 타입
+tests/
+  browser-check.mjs           브라우저 통합 검증 (시나리오별 결과 출력)
+  benchmark.mjs               대용량 성능 측정 (수동)
+  fixtures/                   한글, 헤더 없음, 컬럼 순서 변경, 오류, KEY 매핑·중복·NULL·복합 KEY, 표기 차이(format_*) CSV
+samples/                      수동 확인용 CSV (basic·composite·KEY 오류, 10만·100만 행, 100 MB)
+vite.config.ts                Vue 플러그인 및 상대 경로 배포
+```
+
+## 개발
+
+Node.js 22.12 이상(또는 20.19 이상), npm을 준비합니다. 개발 검증 환경은 Node.js 24입니다.
+
+```sh
+npm ci
+npm run dev        # http://127.0.0.1:5173
+npm run build      # strict 타입 검사 + dist/ 생성
+npm run preview    # http://127.0.0.1:4173 (배포본 확인)
+```
+
+로딩·검증·비교·조회·다운로드 중에는 입력과 버튼을 잠가 동시 쿼리와 파일 교체 충돌을 막습니다.
+
+## 라이브러리와 선택
+
+
+런타임은 Vue 3와 `@duckdb/duckdb-wasm`만 직접 추가했습니다. 빌드는 Vite, Vue Vite 플러그인, TypeScript, vue-tsc를 사용합니다. 정확한 의존성 버전은 `package-lock.json`에 기록됩니다. TypeScript는 vue-tsc 호환을 위해 5.9.3으로 고정합니다.
+
+DuckDB의 EH / MVP 번들을 모두 로컬 자산으로 빌드하고 브라우저 지원에 맞춰 선택합니다. 멀티스레드 COI 번들은 쓰지 않아 별도의 COOP/COEP 헤더가 필요 없습니다. 대신 단일 Worker로 실행합니다. 배포 용량은 WASM 두 파일 때문에 약 75 MB입니다.
+
+CSV 전체를 JS 문자열/행 배열로 읽지 않고 File 핸들로 등록합니다. DuckDB 내부 테이블로 적재한 뒤 등록 파일 핸들을 해제합니다. 화면에 전달하는 행은 20개뿐입니다. 재선택은 같은 테이블을 교체하며 엔진 해제 시 연결과 Worker를 정리합니다.
+
+## 테스트
+
+브라우저 통합 테스트와 성능 측정은 Playwright와 Chrome이 있는 개발 환경에서 실행합니다. 앱 의존성을 늘리지 않도록 Playwright는 프로젝트에 포함하지 않았습니다.
+
+```sh
+# 터미널 1
+npm run build && npm run preview
+# 터미널 2: 통합 테스트 (시나리오별 ✓ 출력)
+TEST_URL=http://127.0.0.1:4173 PLAYWRIGHT_MODULE=/absolute/path/to/node_modules/playwright npm test
+# 성능 측정: 첫 번째 컬럼을 KEY로 사용, RULES로 매핑 순서대로 비교 규칙 지정 가능(예: RULES=exact,trim,number,date)
+SOURCE=samples/big_source.csv TARGET=samples/big_target.csv PLAYWRIGHT_MODULE=/absolute/path/to/node_modules/playwright npm run benchmark
+```
+
+기본 브라우저 채널은 `chrome`이며 `BROWSER_CHANNEL`로 변경할 수 있습니다. 통합 테스트는 외부 출처 요청을 차단하고 그 요청이나 페이지 오류가 발생하면 실패합니다. 검증 시나리오는 정상 데이터, NULL/빈 문자열, 중복 KEY, NULL·빈 KEY, 복합 KEY, 컬럼 순서 차이와 컬럼명이 다른 KEY 매핑, 한글, 헤더 유무, 빈 파일·잘못된 CSV, 파일 제거, 결과 필터·페이지·상세, 다운로드 4종 내용과 조각 경계, 비교 규칙(공백·숫자·날짜, 변환 실패·15자 초과 숫자 처리), 10만 행 비교·다운로드입니다. 스크린샷은 `/tmp/datacompare-check.png`에 기록합니다.
+
+### 측정 기록 (2026-10-22, 개발 PC: Apple M4 · 24 GB · Chrome)
+
+- `npm run build`: strict 타입 검사 및 배포 빌드 통과
+- 프로덕션 미리보기(Chrome): 브라우저 통합 검증 19개 시나리오 모두 통과, 외부 요청 0건
+- 비교 규칙 성능(100 MB × 2, 비교 컬럼 9개): 모두 그대로 0.31초 / 숫자 1개 0.47초 / 날짜 1개 0.93초(모든 값이 변환 실패하는 시간 포함 컬럼 기준, 최악 조건) / 9개 전부 규칙 적용 1.35초 / KEY까지 공백 무시 시 KEY 검증 0.14→0.28초. 페이지 이동·다운로드는 규칙과 무관. 숫자를 `DECIMAL(38,10)`로 비교하던 첫 구현은 숫자 1개에 2.5초여서 `DOUBLE`로 바꿨습니다.
+- `npm run benchmark`(100 MB × 2): 로딩 파일당 0.4초, KEY 검증 0.15초, 비교 0.34초, 페이지·필터·상세 0.05~0.06초, 전체 결과 다운로드 0.97초. 상태 표시 기준 측정이라 아래 수동 측정(화면 렌더링까지 대기)보다 짧게 나옵니다.
+- 100 MB × 2 샘플 다운로드(조각 방식): 전체 결과 189.5 MB 1.1초, 변경 데이터 10.2 MB 0.18초, 추가·삭제 각 0.9 MB 0.1초 내외. Chrome 전체 최대 메모리 약 2.4 GB, 다운로드 후 메인 스레드 JS 힙 12 MB (한 번에 만들던 방식: 2.3초, 2.9 GB, 208 MB)
+- 10만 행 결과: 전체 2,020페이지, MODIFIED 396페이지, 페이지 이동·필터 정상
+- 100만 행 × 2 (각 약 33 MB, `samples/million_*.csv`) 수동 측정: 파일당 로딩 약 0.3초, KEY 검증 약 0.3초, 비교 실행 약 0.3초, 페이지 이동·필터·상세 조회 0.05~0.11초. 건수 기대값(MATCH 792,000 / MODIFIED 198,000 / ADDED 10,000 / DELETED 10,000) 일치. 개발 PC(Apple Silicon Mac, Chrome) 기준이며 사용자 PC 사양에 따라 달라집니다.
+- 파일당 약 100 MB (50만 행 × 10컬럼, 한글 포함, `samples/big_*.csv`) 수동 측정: 파일당 로딩 약 0.8초, KEY 검증 0.22초, 비교 실행(비교 컬럼 9개) 0.29초, 페이지 이동·필터·상세 조회 0.05초 내외. 건수 기대값(MATCH 339,429 / MODIFIED 155,571 / ADDED 5,000 / DELETED 5,000) 일치. 측정 중 Chrome 전체 최대 메모리(RSS) 약 1.5 GB, 메인 스레드 JS 힙 약 9 MB.
+- 10만 행 × 2 비교: MATCH 79,200 / MODIFIED 19,800 / ADDED 1,000 / DELETED 1,000 기대값 일치 (전체 테스트 약 4초)
+
+### Task 1~2 검증 기록 (2026-10-13)
+
+- `npm run build`: strict 타입 검사 및 배포 빌드 통과
+- Chrome 개발 서버 / 프로덕션 미리보기: 위 브라우저 통합 검증 모두 통과
+- 외부 출처 요청 차단 상태: 초기화와 CSV 로딩 성공, 외부 요청 0건
+- 100,000행(약 2 MB) CSV: 전체 행 수 정확, 화면 조회 20행
+- WASM EH / MVP 및 Worker 파일이 `dist/assets/`에 포함됨. Chrome에서 선택된 번들의 로컬 로딩을 확인했으며 MVP 전용 브라우저는 별도 검증하지 않았습니다.
+
+## 알려진 제약
+
+- DuckDB 메모리 테이블이므로 데이터 전체는 WASM 메모리를 사용합니다. JS 전체 배열 복사는 피하지만 무제한 크기를 지원하지는 않습니다. WASM 주소 공간과 브라우저 메모리에 제한이 있어 초대용량 파일은 실패할 수 있습니다. DuckDB-WASM은 32비트 WebAssembly라 PC 메모리와 무관하게 엔진 메모리가 최대 4 GB입니다.
+- CSV 입력은 UTF-8, 쉼표 구분만 지원합니다. EUC-KR 변환, 구분자 설정, 숫자/날짜 정규화는 제공하지 않습니다.
+- 빈 파일·구문 오류는 오류를 표시합니다. 중복/빈 헤더는 DuckDB가 컬럼명을 자동 보정할 수 있습니다. 헤더만 있는 파일 처리는 DuckDB CSV 추론 결과에 따릅니다.
+- 미리보기는 적재 순서의 앞 20행입니다. 매우 긴 셀은 화면에서 잘릴 수 있습니다.
+- 결과 페이지 조회는 페이지마다 원본 테이블과 `rowid`로 연결합니다. 100만 행에서는 0.1초 내외로 측정됐으나 그 이상 규모는 검증하지 않았습니다.
+- 다운로드는 10만 행 조각 단위로 만들지만 완성 파일은 브라우저 Blob 저장소를 거칩니다. 브라우저가 큰 Blob을 디스크로 내리는지는 브라우저 정책에 따르며, 100 MB × 2 비교의 전체 결과(190 MB) 다운로드 중 Chrome 전체 메모리는 약 2.4 GB였습니다.
+- 파일 로딩 취소 버튼, 디스크 스필/영구 저장, 새로고침 복구는 없습니다. 오류 시 다시 파일을 선택할 수 있습니다.
+- 현재 검증 브라우저는 데스크톱 Chrome입니다. 배포 대상 브라우저와 사내 보안 정책에서 별도 검증이 필요합니다.
+
+- 비교 규칙이 "그대로"인 컬럼은 앞뒤 공백이나 `01000`/`1000`처럼 표기만 다른 값도 다르게 판정합니다. 표기 차이가 예상되는 컬럼은 비교 규칙을 지정해야 합니다.
+- 실제 폐쇄망 서버와 사용자 PC(i5-14400, 16 GB)에서의 실행은 아직 검증하지 않았습니다. 아래 체크리스트로 확인이 필요합니다.
