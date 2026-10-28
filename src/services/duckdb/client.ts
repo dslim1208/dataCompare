@@ -47,19 +47,11 @@ export async function loadCsv(side: Side, file: File, header: boolean): Promise<
   const path = `${side}.csv`;
   // Comparison rows point at the old table's rowids, so any reload invalidates them.
   await connection.query('DROP TABLE IF EXISTS comparison');
+  await connection.query(`DROP TABLE IF EXISTS ${side}_raw`);
   await database.registerFileHandle(path, file, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
   try {
     await connection.query(`CREATE OR REPLACE TABLE ${side} AS SELECT * FROM read_csv('${path}', header=${header}, all_varchar=true, delim=',', quote='"', escape='"', nullstr='', allow_quoted_nulls=false, strict_mode=true)`);
-    const schema = await connection.query(`DESCRIBE ${side}`);
-    const count = await connection.query(`SELECT count(*) AS total FROM ${side}`);
-    const rows = await connection.query(`SELECT * FROM ${side} LIMIT 20`);
-    const total: unknown = count.get(0)?.total;
-    if (total == null) throw new Error('행 수를 조회하지 못했습니다.');
-    return {
-      name: file.name, size: file.size, rowCount: String(total),
-      columns: schema.toArray().map(row => String(row.column_name)),
-      preview: Array.from({ length: rows.numRows }, (_, index) => rows.schema.fields.map((_, column) => cell(rows, column, index))),
-    };
+    return await describeTable(side, file.name, file.size);
   } catch (error) {
     // A failed reload must not leave the previous file's table behind for later comparison.
     await connection.query(`DROP TABLE IF EXISTS ${side}`).catch(cause => console.error('이전 테이블 정리 실패', cause));
@@ -74,6 +66,72 @@ export async function clearCsv(side: Side): Promise<void> {
   if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
   await connection.query('DROP TABLE IF EXISTS comparison');
   await connection.query(`DROP TABLE IF EXISTS ${side}`);
+  await connection.query(`DROP TABLE IF EXISTS ${side}_raw`);
+}
+
+async function describeTable(side: Side, name: string, size: number): Promise<CsvInfo> {
+  const schema = await connection!.query(`DESCRIBE ${side}`);
+  const count = await connection!.query(`SELECT count(*) AS total FROM ${side}`);
+  const rows = await connection!.query(`SELECT * FROM ${side} LIMIT 20`);
+  const total: unknown = count.get(0)?.total;
+  if (total == null) throw new Error('행 수를 조회하지 못했습니다.');
+  return {
+    name, size, rowCount: String(total),
+    columns: schema.toArray().map(row => String(row.column_name)),
+    preview: Array.from({ length: rows.numRows }, (_, index) => rows.schema.fields.map((_, column) => cell(rows, column, index))),
+  };
+}
+
+async function hasTable(name: string): Promise<boolean> {
+  const result = await connection!.query(`SELECT count(*) AS cnt FROM duckdb_tables() WHERE table_name = ${quoteLiteral(name)}`);
+  return Number(result.get(0)?.cnt) > 0;
+}
+
+// Replaces the side's table with the result of a user SELECT. Inside the query the side's own name
+// always means the originally loaded CSV (kept as <side>_raw), so the SQL can be edited and re-run.
+// The query runs as a subquery, so a second statement after ';' is a syntax error rather than executed.
+// Every result column is cast back to VARCHAR so KEY checks, rules and downloads behave as for a CSV.
+export async function transformTable(side: Side, sql: string, name: string, size: number): Promise<CsvInfo> {
+  if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
+  if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
+  const query = sql.trim().replace(/;+\s*$/, '');
+  if (!query) throw new Error('SQL을 입력하세요.');
+  if (!await hasTable(side)) throw new Error('먼저 CSV 파일을 불러오세요.');
+  const raw = await hasTable(`${side}_raw`);
+  const scope = raw ? `WITH ${side} AS (SELECT * FROM ${side}_raw)\n` : '';
+  try {
+    await connection.query(`CREATE OR REPLACE TABLE ${side}_sql AS ${scope}SELECT COLUMNS(*)::VARCHAR FROM (\n${query}\n)`);
+  } catch (error) {
+    await connection.query(`DROP TABLE IF EXISTS ${side}_sql`).catch(cause => console.error('SQL 임시 테이블 정리 실패', cause));
+    throw error;
+  }
+  // One transaction, so a failed swap never leaves the side without a table.
+  await connection.query(`BEGIN TRANSACTION;
+DROP TABLE IF EXISTS comparison;
+${raw ? `DROP TABLE ${side};` : `ALTER TABLE ${side} RENAME TO ${side}_raw;`}
+ALTER TABLE ${side}_sql RENAME TO ${side};
+COMMIT;`).catch(async error => {
+    await connection!.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  });
+  return describeTable(side, name, size);
+}
+
+// Restores the originally loaded CSV after transformTable.
+export async function resetTable(side: Side, name: string, size: number): Promise<CsvInfo> {
+  if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
+  if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
+  if (await hasTable(`${side}_raw`)) {
+    await connection.query(`BEGIN TRANSACTION;
+DROP TABLE IF EXISTS comparison;
+DROP TABLE IF EXISTS ${side};
+ALTER TABLE ${side}_raw RENAME TO ${side};
+COMMIT;`).catch(async error => {
+      await connection!.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    });
+  }
+  return describeTable(side, name, size);
 }
 
 // User column names reach SQL only after matching the loaded table's columns, then as quoted identifiers.
@@ -85,7 +143,7 @@ function quoteLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-const rules: CompareRule[] = ['exact', 'trim', 'number', 'date'];
+const rules: CompareRule[] = ['exact', 'trim', 'number', 'date', 'datetime'];
 
 // Typed value for number/date rules; NULL when the text cannot be parsed. Plain replace() is used
 // instead of regexp_replace() because it is several times faster on large columns.
@@ -96,23 +154,32 @@ function parsed(column: string, rule: CompareRule): string {
     const digits = `replace(trim(${column}), ',', '')`;
     return `CASE WHEN length(${digits}) <= 15 THEN try_cast(${digits} AS DOUBLE) END`;
   }
-  return `CAST(try_strptime(replace(replace(replace(trim(${column}), '-', ''), '.', ''), '/', ''), '%Y%m%d') AS DATE)`;
+  // Date part loses its - . / separators and time part its colons, so four fixed formats cover
+  // 2026-10-01, 2026.10.01 13:05, 2026/10/01T13:05:00.5 and 20261001. A third space-separated part
+  // means unknown text, which is left unparsed rather than half-read.
+  const text = `replace(trim(${column}), 'T', ' ')`;
+  const day = `replace(replace(replace(split_part(${text}, ' ', 1), '-', ''), '.', ''), '/', '')`;
+  const time = `replace(split_part(${text}, ' ', 2), ':', '')`;
+  // Picking one format by length is several times faster than letting strptime try a format list.
+  const timestamp = `CASE WHEN split_part(${text}, ' ', 3) = '' THEN CASE length(${time}) WHEN 0 THEN try_strptime(${day}, '%Y%m%d') WHEN 4 THEN try_strptime(${day} || ${time}, '%Y%m%d%H%M') WHEN 6 THEN try_strptime(${day} || ${time}, '%Y%m%d%H%M%S') ELSE try_strptime(${day} || ${time}, '%Y%m%d%H%M%S.%f') END END`;
+  return rule === 'date' ? `CAST(${timestamp} AS DATE)` : timestamp;
 }
 
 // Single hashable KEY value for joins and duplicate checks. Display and download keep original values.
 // Unparseable number/date text falls back to the original text, and NULL stays NULL.
 function normalize(column: string, rule: CompareRule): string {
   if (rule === 'trim') return `trim(${column})`;
-  if (rule === 'number' || rule === 'date') return `coalesce(CAST(${parsed(column, rule)} AS VARCHAR), ${column})`;
+  if (rule !== 'exact') return `coalesce(CAST(${parsed(column, rule)} AS VARCHAR), ${column})`;
   return column;
 }
 
 // Value columns compare typed values directly; converting them back to text dominated the cost.
 function differs(source: string, target: string, rule: CompareRule): string {
   if (rule === 'trim') return `trim(${source}) IS DISTINCT FROM trim(${target})`;
-  if (rule === 'number' || rule === 'date') {
+  if (rule !== 'exact') {
     const [left, right] = [parsed(source, rule), parsed(target, rule)];
-    return `CASE WHEN ${left} IS NOT NULL AND ${right} IS NOT NULL THEN ${left} <> ${right} ELSE ${source} IS DISTINCT FROM ${target} END`;
+    // left <> right is NULL only when either side failed to parse, so each side is parsed once.
+    return `coalesce(${left} <> ${right}, ${source} IS DISTINCT FROM ${target})`;
   }
   return `${source} IS DISTINCT FROM ${target}`;
 }

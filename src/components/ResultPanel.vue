@@ -6,12 +6,12 @@ import type { ColumnPair, CompareSummary, ResultRow, Status } from '../types/csv
 const props = defineProps<{ pairs: ColumnPair[]; summary: CompareSummary; busy: boolean }>();
 const emit = defineEmits<{ busy: [value: boolean] }>();
 const pageSize = 50;
-const filters: { status: Status | undefined; label: string }[] = [
-  { status: undefined, label: '전체' },
-  { status: 'MATCH', label: 'MATCH' },
-  { status: 'MODIFIED', label: 'MODIFIED' },
-  { status: 'ADDED', label: 'ADDED' },
-  { status: 'DELETED', label: 'DELETED' },
+const filters: { status: Status | undefined; label: string; title: string }[] = [
+  { status: undefined, label: '전체', title: '전체 결과' },
+  { status: 'MATCH', label: 'MATCH', title: '일치' },
+  { status: 'MODIFIED', label: 'MODIFIED', title: '변경' },
+  { status: 'ADDED', label: 'ADDED', title: '추가' },
+  { status: 'DELETED', label: 'DELETED', title: '삭제' },
 ];
 const filter = ref<Status>();
 const page = ref(0);
@@ -66,15 +66,18 @@ function changedNames(row: ResultRow) {
 
 <template>
   <section class="results">
-    <h3>비교 결과 목록</h3>
+    <h3>비교 결과 <small>카드를 선택하면 해당 결과만 표시됩니다.</small></h3>
     <div class="filters" role="group" aria-label="상태 필터">
-      <button v-for="item in filters" :key="item.label" type="button" :class="['secondary', { active: filter === item.status }]" :aria-pressed="filter === item.status" :disabled="busy" @click="choose(item.status)">{{ item.label }} ({{ count(item.status).toLocaleString('ko-KR') }})</button>
+      <button v-for="item in filters" :key="item.label" type="button" :class="['result-card', item.status?.toLowerCase(), { active: filter === item.status }]" :data-status="item.status" :aria-label="`${item.title} (${count(item.status).toLocaleString('ko-KR')})`" :aria-pressed="filter === item.status" :disabled="busy" @click="choose(item.status)"><span>{{ item.title }}</span><strong>{{ count(item.status).toLocaleString('ko-KR') }}</strong><small>{{ item.status || 'TOTAL' }}</small></button>
     </div>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
-    <div class="table-wrap"><table class="result-table">
+    <div class="result-workspace">
+    <div class="result-list">
+    <h3>결과 목록 <small>행을 선택해 값을 비교하세요.</small></h3>
+    <div class="table-wrap" tabindex="0" aria-label="비교 결과 목록"><table class="result-table">
       <thead><tr><th>상태</th><th v-for="pair in keys" :key="pair.source">{{ pair.source }}</th><th>변경 컬럼</th></tr></thead>
       <tbody>
-        <tr v-for="row in rows" :key="`${row.sourceRow}-${row.targetRow}`" :class="{ selected: selected === row }" tabindex="0" @click="open(row)" @keydown.enter="open(row)">
+        <tr v-for="row in rows" :key="`${row.sourceRow}-${row.targetRow}`" :class="{ selected: selected === row }" :tabindex="busy ? -1 : 0" :aria-selected="selected === row" @click="!busy && open(row)" @keydown.enter="!busy && open(row)" @keydown.space.prevent="!busy && open(row)">
           <td><span :class="['state', row.status.toLowerCase()]">{{ row.status }}</span></td>
           <td v-for="(value, index) in row.keys" :key="index"><CellValue :value="value"/></td>
           <td>{{ changedNames(row) }}</td>
@@ -87,9 +90,11 @@ function changedNames(row: ResultRow) {
       <span>{{ (page + 1).toLocaleString('ko-KR') }} / {{ pages.toLocaleString('ko-KR') }} 페이지 · 페이지당 {{ pageSize }}건</span>
       <button type="button" class="secondary" :disabled="busy || page + 1 >= pages" @click="go(page + 1)">다음</button>
     </div>
+    </div>
+    <aside class="result-detail" aria-label="선택한 행 상세 비교" :aria-busy="!!selected && !detail && !error">
     <template v-if="selected && detail">
       <h3>상세 비교 · KEY {{ selected.keys.map(value => value ?? 'NULL').join(' | ') }} <span :class="['state', selected.status.toLowerCase()]">{{ selected.status }}</span></h3>
-      <div class="table-wrap"><table class="detail-table">
+      <div class="table-wrap" tabindex="0" aria-label="컬럼별 상세 비교"><table class="detail-table">
         <thead><tr><th>컬럼 (Source / Target)</th><th>SOURCE</th><th>TARGET</th></tr></thead>
         <tbody>
           <tr v-for="(pair, index) in pairs" :key="index" :class="{ changed: selected.changed.includes(index) }">
@@ -100,5 +105,8 @@ function changedNames(row: ResultRow) {
         </tbody>
       </table></div>
     </template>
+    <div v-else class="detail-empty"><span aria-hidden="true">↔</span><h3>{{ selected ? '상세 정보를 불러오는 중입니다.' : '변경 전·후를 나란히 확인하세요' }}</h3><p class="muted">{{ selected ? '잠시만 기다려 주세요.' : '결과 목록에서 행을 선택하면 컬럼별 기준 값과 비교 값이 표시됩니다.' }}</p></div>
+    </aside>
+    </div>
   </section>
 </template>

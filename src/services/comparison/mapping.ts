@@ -7,7 +7,7 @@ export function autoMatch(source: string[], target: string[]): ColumnPair[] {
     const index = remaining.findIndex(candidate => candidate.toLowerCase() === name.toLowerCase());
     if (index < 0) return [];
     const [match] = remaining.splice(index, 1);
-    return [{ source: name, target: match, key: false, rule: 'exact' as const }];
+    return [{ source: name, target: match, key: false, rule: 'trim' as const }];
   });
 }
 

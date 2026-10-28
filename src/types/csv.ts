@@ -6,7 +6,7 @@ export interface CsvInfo {
   columns: string[];
   preview: (string | null)[][];
 }
-export type CompareRule = 'exact' | 'trim' | 'number' | 'date';
+export type CompareRule = 'exact' | 'trim' | 'number' | 'date' | 'datetime';
 export interface ColumnPair {
   source: string;
   target: string;

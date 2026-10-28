@@ -23,7 +23,7 @@ const passed = computed(() => checks.value && sides.every(side => {
   return check.nullRows === 0 && check.emptyRows === 0 && check.duplicateKeys === 0;
 }));
 function add() {
-  pairs.value.push({ source: unmapped.value.source[0] ?? '', target: unmapped.value.target[0] ?? '', key: false, rule: 'exact' });
+  pairs.value.push({ source: unmapped.value.source[0] ?? '', target: unmapped.value.target[0] ?? '', key: false, rule: 'trim' });
 }
 async function validate() {
   error.value = '';
@@ -38,10 +38,11 @@ async function validate() {
   finally { emit('busy', false); }
 }
 const ruleOptions: { value: CompareRule; label: string }[] = [
+  { value: 'trim', label: '앞뒤 공백 무시 (기본)' },
   { value: 'exact', label: '그대로' },
-  { value: 'trim', label: '앞뒤 공백 무시' },
   { value: 'number', label: '숫자 (콤마 무시)' },
-  { value: 'date', label: '날짜 (- . / 무시)' },
+  { value: 'date', label: '날짜 (- . / 무시, 시간 무시)' },
+  { value: 'datetime', label: '일시 (날짜+시간, 초까지)' },
 ];
 function display(values: (string | null)[]) {
   return values.map(value => value ?? 'NULL').join(' | ');
@@ -50,8 +51,9 @@ function display(values: (string | null)[]) {
 
 <template>
   <section class="panel mapping">
-    <div class="panel-heading"><span class="tag">03</span><h2>KEY 및 비교 컬럼 매핑</h2></div>
-    <p class="muted">이름이 같은 컬럼(대소문자 무시)은 자동으로 연결됩니다. 비교 기준이 되는 KEY를 하나 이상 선택하세요. 여러 개를 선택하면 복합 KEY가 됩니다. 비교 규칙은 비교할 때만 적용되며 화면과 다운로드에는 원본 값이 표시됩니다.</p>
+    <div class="panel-heading"><span class="tag">02</span><h2>KEY 및 비교 컬럼 매핑</h2></div>
+    <p class="muted">같은 이름의 컬럼은 자동으로 연결됩니다. 비교 기준 KEY를 하나 이상 선택하세요.</p>
+    <details class="mapping-help"><summary>KEY와 비교 규칙 안내</summary><p class="muted">같은 이름은 대소문자를 구분하지 않습니다. KEY를 여러 개 선택하면 복합 KEY가 됩니다. 기본 규칙은 앞뒤 공백 무시이며, 공백까지 구분하려면 “그대로”를 고르세요. 규칙은 비교할 때만 적용되고 화면과 다운로드에는 원본 값이 표시됩니다.</p></details>
     <div class="table-wrap"><table>
       <thead><tr><th>KEY</th><th>Source 컬럼</th><th>Target 컬럼</th><th>비교 규칙</th><th></th></tr></thead>
       <tbody>
