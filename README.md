@@ -213,6 +213,31 @@ KEY 컬럼에 식을 지정하면 변환된 KEY로 NULL·빈 문자열·중복�
 
 ## 6. 빌드와 폐쇄망 배포
 
+### 두 가지 배포본
+
+| 구분 | 서버용 | 로컬 파일 실행용 |
+|---|---|---|
+| 배포 파일 | `data-migration-validation-server-v0.1.0.zip` | `data-migration-validation-local-windows-x64-v0.1.0.zip` |
+| 실행 | 내부 웹 서버에 압축을 풀고 배포 URL로 접속 | 압축을 풀고 `DataMigrationValidation.exe` 더블클릭 |
+| 사용자 PC | Chrome·Edge | Windows x64, Chrome·Edge |
+| 추가 설치 | 사용자 PC에 불필요 | Node.js·Python·npm 설치 불필요 |
+| 인터넷 | 실행 중 불필요 | 실행 중 불필요 |
+
+두 배포본은 같은 기능을 사용합니다. 로컬용은 화면·WASM·Worker를 실행 파일 안에 포함하고 `127.0.0.1`의 빈 포트에서만 제공하며, 기본 브라우저를 자동으로 엽니다. 실행 창을 닫으면 로컬 서버도 종료됩니다. `index.html`을 `file://`로 여는 방식은 사용하지 않습니다. 회사 PC에서 실행 파일 사용이 허용되어야 하며 Windows의 실제 실행 확인은 배포 대상 PC에서 수행해야 합니다.
+
+```sh
+# 서버용 ZIP만 생성 (Node.js·npm)
+npm run build:server
+
+# 로컬 Windows x64 ZIP 생성 (빌드 PC에 Go 추가 필요)
+npm run build:local
+
+# 서버용과 로컬용을 모두 생성
+npm run release
+```
+
+결과는 `releases/`에 생성합니다. Go는 로컬 실행 파일을 만드는 빌드 도구이며 실행 대상 PC에는 필요하지 않습니다. `GO_BINARY`로 Go 실행 파일 경로를 지정할 수 있습니다. 배포본에는 CSV 데이터·진급심사 문서·개인 템플릿을 포함하지 않습니다. 자세한 절차와 검증 범위는 [배포 안내](docs/deployment.md)에 정리했습니다.
+
 ### 빌드
 
 의존성을 확보할 수 있는 개발 환경에서 다음 명령을 실행합니다.
@@ -361,6 +386,7 @@ npm run test:template
 | 빌드 | Vite, Vue Vite 플러그인, vue-tsc, TypeScript 5.9.3 |
 | 검증 | Playwright, 데스크톱 Chrome |
 | Excel 생성 | ExcelJS 4.4.0 (MIT), 일괄 검증 탭을 열 때 로컬 번들 로딩 |
+| 로컬 실행 배포 | Go 표준 라이브러리 기반 런처, 웹 자산 내장 Windows x64 실행 파일 |
 | 디자인 | Stitch 시안 기반, 교보생명 곡옥 아이콘·녹색 포인트, 로컬 이미지·시스템 글꼴 |
 
 정확한 패키지 버전은 `package-lock.json`에 기록합니다.
@@ -385,7 +411,10 @@ samples/                           수동 확인용 CSV
 tests/                            통합 검증과 테스트 CSV
 design/                           디자인 시안과 출처
 docs/                             과거 검증·성능 이력
+scripts/package-release.mjs        서버용·로컬용 ZIP 생성
+tools/launcher/                    로컬 실행 파일과 HTTP 제공 코드
 ```
 
 - [디자인 적용 내역과 CI 출처](design/README.md)
 - [과거 검증·성능 측정 이력](docs/validation-history.md)
+- [서버용·로컬 실행용 배포 안내](docs/deployment.md)

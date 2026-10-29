@@ -6,11 +6,15 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build",
+    "build:server": "npm run build && node scripts/package-release.mjs --server-only",
+    "build:local": "npm run build && node scripts/package-release.mjs --local-only",
+    "release": "npm run build && node scripts/package-release.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node tests/browser-check.mjs",
     "benchmark": "node tests/benchmark.mjs",
     "test:batch": "node tests/batch-check.mjs",
-    "test:template": "node tests/template-check.mjs"
+    "test:template": "node tests/template-check.mjs",
+    "test:release": "node tests/release-check.mjs"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",
@@ -19,6 +23,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.10",
+    "jszip": "^3.10.2",
     "typescript": "5.9.3",
     "vite": "^8.3.4",
     "vue-tsc": "^3.3.13"
