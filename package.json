@@ -8,10 +8,13 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node tests/browser-check.mjs",
-    "benchmark": "node tests/benchmark.mjs"
+    "benchmark": "node tests/benchmark.mjs",
+    "test:batch": "node tests/batch-check.mjs",
+    "test:template": "node tests/template-check.mjs"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",
+    "exceljs": "^4.4.0",
     "vue": "^3.5.43"
   },
   "devDependencies": {

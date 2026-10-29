@@ -6,10 +6,10 @@ const props = defineProps<{ pairs: ColumnPair[]; summary: CompareSummary; busy: 
 const emit = defineEmits<{ busy: [value: boolean] }>();
 const error = ref('');
 const items: { kind: ExportKind; label: string; description: string }[] = [
-  { kind: 'ALL', label: '전체 결과', description: '상태, KEY, 변경 컬럼, 컬럼별 Source/Target 값' },
+  { kind: 'ALL', label: '전체 결과', description: '상태, KEY, 변경 컬럼, 원본·Target 값 (SQL 식 사용 시 기대값 포함)' },
   { kind: 'ADDED', label: '추가 데이터', description: 'Target에만 있는 원본 행 전체' },
   { kind: 'DELETED', label: '삭제 데이터', description: 'Source에만 있는 원본 행 전체' },
-  { kind: 'MODIFIED', label: '변경 데이터', description: 'KEY, 컬럼명, Source 값, Target 값 (변경 컬럼당 1행)' },
+  { kind: 'MODIFIED', label: '변경 데이터', description: 'KEY, 컬럼명, 원본·Target 값 (SQL 식 사용 시 기대값 포함, 변경 컬럼당 1행)' },
 ];
 function count(kind: ExportKind) {
   const { match, modified, added, deleted } = props.summary;

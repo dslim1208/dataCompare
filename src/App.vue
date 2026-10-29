@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onBeforeUnmount, ref } from 'vue';
 import CsvPanel from './components/CsvPanel.vue';
+import kyoboCi from './assets/kyobo-ci.png';
 import MappingPanel from './components/MappingPanel.vue';
 import ComparePanel from './components/ComparePanel.vue';
 import { initialize, dispose } from './services/duckdb/client';
 import type { ColumnPair, CsvInfo } from './types/csv';
 const ready = ref(false);
+const BatchPanel = defineAsyncComponent(() => import('./components/BatchPanel.vue'));
+const tab = ref('single');
+const batchOpened = ref(false);
+const batchBusy = ref(false);
 const busy = ref(false);
 const version = ref('');
 const error = ref('');
@@ -21,7 +26,15 @@ onBeforeUnmount(() => { dispose().catch(cause => console.error('DuckDB 정리 �
 </script>
 <template>
   <main>
-    <header><div><p class="eyebrow">LOCAL CSV WORKSPACE</p><h1>dataCompare</h1><p class="muted">CSV 데이터 비교 및 검증 도구</p></div><span class="badge">로컬 처리 · 외부 전송 없음</span></header>
+    <header class="workspace-header">
+      <div class="workspace-title"><span class="workspace-icon" aria-hidden="true"><img :src="kyoboCi" alt="" width="240" height="70"></span><div><h1>데이터 이행 검증</h1><p class="muted">두 파일의 차이를 정확하게 확인하세요.</p></div></div>
+      <span class="badge"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg>로컬 처리 · 외부 전송 없음</span>
+    </header>
+    <div class="workspace-tabs" role="tablist" aria-label="검증 방식">
+      <button id="single-tab" role="tab" :aria-selected="tab === 'single'" aria-controls="single-workspace" :disabled="busy || batchBusy" @click="tab = 'single'">단일 검증</button>
+      <button id="batch-tab" role="tab" :aria-selected="tab === 'batch'" aria-controls="batch-workspace" :disabled="busy || batchBusy" @click="batchOpened = true; tab = 'batch'">일괄 검증</button>
+    </div>
+    <div v-show="tab === 'single'" id="single-workspace" role="tabpanel" aria-labelledby="single-tab">
     <nav aria-label="비교 진행 단계" class="steps">
       <ol><li v-for="(label, index) in ['파일 선택', '컬럼 매핑·검증', '비교 및 결과']" :key="label" :class="{ current: step === index + 1, complete: step > index + 1 }" :aria-current="step === index + 1 ? 'step' : undefined"><span>{{ step > index + 1 ? '✓' : `0${index + 1}` }}</span>{{ label }}</li></ol>
     </nav>
@@ -29,6 +42,8 @@ onBeforeUnmount(() => { dispose().catch(cause => console.error('DuckDB 정리 �
     <div class="grid"><CsvPanel side="source" :ready="ready" :busy="busy" @busy="busy = $event" @loaded="source = $event; pairs = undefined"/><CsvPanel side="target" :ready="ready" :busy="busy" @busy="busy = $event" @loaded="target = $event; pairs = undefined"/></div>
     <MappingPanel v-if="source && target" :source="source" :target="target" :busy="busy" @busy="busy = $event" @validated="pairs = $event"/>
     <ComparePanel v-if="source && target && pairs" :pairs="pairs" :busy="busy" @busy="busy = $event"/>
+    </div>
+    <div v-if="batchOpened" v-show="tab === 'batch'" id="batch-workspace" role="tabpanel" aria-labelledby="batch-tab"><BatchPanel @busy="batchBusy = $event"/></div>
     <footer>UTF-8 · 쉼표 구분 CSV · 모든 값은 문자열로 보존 · 비인용 빈 필드 = NULL / 인용된 빈 필드 = 빈 문자열</footer>
   </main>
 </template>

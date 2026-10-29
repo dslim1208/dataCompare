@@ -1,0 +1,33 @@
+{
+  "type": "data-migration-validation-mapping",
+  "version": 1,
+  "name": "전표·계정원장 이행 검증",
+  "pairs": [
+    {
+      "source": "전표번호",
+      "target": "전표번호",
+      "key": true,
+      "rule": "sql",
+      "expression": "'C' || SUBSTR(\"전표번호\", 2)"
+    },
+    {
+      "source": "계정원장번호",
+      "target": "계정원장번호",
+      "key": false,
+      "rule": "sql",
+      "expression": "SUBSTR(\"계정원장번호\", 1, 4) || 'C' || SUBSTR(\"계정원장번호\", 5)"
+    },
+    {
+      "source": "금액",
+      "target": "금액",
+      "key": false,
+      "rule": "number"
+    },
+    {
+      "source": "메모",
+      "target": "메모",
+      "key": false,
+      "rule": "exact"
+    }
+  ]
+}

@@ -6,12 +6,13 @@ export interface CsvInfo {
   columns: string[];
   preview: (string | null)[][];
 }
-export type CompareRule = 'exact' | 'trim' | 'number' | 'date' | 'datetime';
+export type CompareRule = 'exact' | 'trim' | 'number' | 'date' | 'datetime' | 'sql';
 export interface ColumnPair {
   source: string;
   target: string;
   key: boolean;
   rule: CompareRule;
+  expression?: string;
 }
 export interface KeyCheck {
   rowCount: number;

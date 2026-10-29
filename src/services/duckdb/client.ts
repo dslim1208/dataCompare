@@ -5,9 +5,23 @@ import ehWasm from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
 import ehWorker from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
 import type { ColumnPair, CompareRule, CompareSummary, CsvInfo, ExportKind, KeyCheck, ResultRow, Side, Status } from '../../types/csv';
 
+// Each workspace owns its engine and table names; the single-file exports keep their own instance.
+export function createClient() {
 let database: duckdb.AsyncDuckDB | undefined;
 let connection: duckdb.AsyncDuckDBConnection | undefined;
 let worker: Worker | undefined;
+const sqlTableNames: Record<Side, string> = { source: 'source', target: 'target' };
+
+function setSqlTableName(side: Side, value: string): void {
+  if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
+  const name = value.trim();
+  if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name)) throw new Error('테이블명은 문자 또는 _로 시작하고 문자·숫자·_만 사용할 수 있습니다.');
+  const other = side === 'source' ? 'target' : 'source';
+  const lower = name.toLowerCase();
+  if (lower === sqlTableNames[other].toLowerCase()) throw new Error('기준 파일과 비교 파일의 테이블명은 서로 달라야 합니다.');
+  if (lower !== side && ['source', 'target', 'source_raw', 'target_raw', 'source_sql', 'target_sql', 'comparison', 'comparison_expected'].includes(lower)) throw new Error('앱에서 사용하는 이름입니다. 다른 테이블명을 입력하세요.');
+  sqlTableNames[side] = name;
+}
 
 type Table = Awaited<ReturnType<duckdb.AsyncDuckDBConnection['query']>>;
 
@@ -17,7 +31,7 @@ function cell(table: Table, column: number, row: number): string | null {
   return value == null ? null : String(value);
 }
 
-export async function initialize(): Promise<string> {
+async function initialize(): Promise<string> {
   if (location.protocol === 'file:') throw new Error('file:// 실행은 지원하지 않습니다. README의 로컬 HTTP 실행 방법을 사용하세요.');
   await dispose();
   try {
@@ -39,14 +53,14 @@ export async function initialize(): Promise<string> {
   }
 }
 
-export async function loadCsv(side: Side, file: File, header: boolean): Promise<CsvInfo> {
+async function loadCsv(side: Side, file: File, header: boolean): Promise<CsvInfo> {
   if (!database || !connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
   if (file.size === 0) throw new Error('빈 파일입니다. CSV 데이터를 확인하세요.');
   // Table names and file paths are application-owned; the user's file name never enters SQL.
   const path = `${side}.csv`;
   // Comparison rows point at the old table's rowids, so any reload invalidates them.
-  await connection.query('DROP TABLE IF EXISTS comparison');
+  await connection.query('DROP TABLE IF EXISTS comparison; DROP TABLE IF EXISTS comparison_expected');
   await connection.query(`DROP TABLE IF EXISTS ${side}_raw`);
   await database.registerFileHandle(path, file, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
   try {
@@ -61,10 +75,10 @@ export async function loadCsv(side: Side, file: File, header: boolean): Promise<
   }
 }
 
-export async function clearCsv(side: Side): Promise<void> {
+async function clearCsv(side: Side): Promise<void> {
   if (!connection) return;
   if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
-  await connection.query('DROP TABLE IF EXISTS comparison');
+  await connection.query('DROP TABLE IF EXISTS comparison; DROP TABLE IF EXISTS comparison_expected');
   await connection.query(`DROP TABLE IF EXISTS ${side}`);
   await connection.query(`DROP TABLE IF EXISTS ${side}_raw`);
 }
@@ -91,14 +105,23 @@ async function hasTable(name: string): Promise<boolean> {
 // always means the originally loaded CSV (kept as <side>_raw), so the SQL can be edited and re-run.
 // The query runs as a subquery, so a second statement after ';' is a syntax error rather than executed.
 // Every result column is cast back to VARCHAR so KEY checks, rules and downloads behave as for a CSV.
-export async function transformTable(side: Side, sql: string, name: string, size: number): Promise<CsvInfo> {
+async function transformTable(side: Side, sql: string, name: string, size: number): Promise<CsvInfo> {
   if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
   const query = sql.trim().replace(/;+\s*$/, '');
   if (!query) throw new Error('SQL을 입력하세요.');
   if (!await hasTable(side)) throw new Error('먼저 CSV 파일을 불러오세요.');
   const raw = await hasTable(`${side}_raw`);
-  const scope = raw ? `WITH ${side} AS (SELECT * FROM ${side}_raw)\n` : '';
+  const aliases: string[] = [];
+  for (const current of ['source', 'target'] as const) {
+    if (current !== side && !await hasTable(current)) continue;
+    const table = current === side && raw ? `${current}_raw` : current;
+    const select = `SELECT * FROM main.${quoteIdentifier(table)}`;
+    // Keep the default names usable for existing SQL, alongside each custom name.
+    aliases.push(`${quoteIdentifier(current)} AS (${select})`);
+    if (sqlTableNames[current].toLowerCase() !== current) aliases.push(`${quoteIdentifier(sqlTableNames[current])} AS (${select})`);
+  }
+  const scope = `WITH ${aliases.join(', ')}\n`;
   try {
     await connection.query(`CREATE OR REPLACE TABLE ${side}_sql AS ${scope}SELECT COLUMNS(*)::VARCHAR FROM (\n${query}\n)`);
   } catch (error) {
@@ -108,6 +131,7 @@ export async function transformTable(side: Side, sql: string, name: string, size
   // One transaction, so a failed swap never leaves the side without a table.
   await connection.query(`BEGIN TRANSACTION;
 DROP TABLE IF EXISTS comparison;
+DROP TABLE IF EXISTS comparison_expected;
 ${raw ? `DROP TABLE ${side};` : `ALTER TABLE ${side} RENAME TO ${side}_raw;`}
 ALTER TABLE ${side}_sql RENAME TO ${side};
 COMMIT;`).catch(async error => {
@@ -118,12 +142,13 @@ COMMIT;`).catch(async error => {
 }
 
 // Restores the originally loaded CSV after transformTable.
-export async function resetTable(side: Side, name: string, size: number): Promise<CsvInfo> {
+async function resetTable(side: Side, name: string, size: number): Promise<CsvInfo> {
   if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
   if (await hasTable(`${side}_raw`)) {
     await connection.query(`BEGIN TRANSACTION;
 DROP TABLE IF EXISTS comparison;
+DROP TABLE IF EXISTS comparison_expected;
 DROP TABLE IF EXISTS ${side};
 ALTER TABLE ${side}_raw RENAME TO ${side};
 COMMIT;`).catch(async error => {
@@ -143,7 +168,58 @@ function quoteLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-const rules: CompareRule[] = ['exact', 'trim', 'number', 'date', 'datetime'];
+const rules: CompareRule[] = ['exact', 'trim', 'number', 'date', 'datetime', 'sql'];
+
+// DuckDB's tokenizer distinguishes SQL syntax from quoted strings and Korean identifiers.
+// Only a scalar expression is accepted: no statements, comments, subqueries or row expansion.
+async function assertExpression(expression: string): Promise<void> {
+  if (!database) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
+  if (!expression.trim()) throw new Error('SQL 변환식을 입력하세요.');
+  const tokens = await database.tokenize(expression);
+  const bytes = new TextEncoder().encode(expression);
+  const blocked = new Set(['SELECT', 'FROM', 'JOIN', 'UNION', 'INTERSECT', 'EXCEPT', 'OVER', 'WINDOW', 'GROUP', 'ORDER', 'LIMIT', 'OFFSET', 'WITH', 'VALUES', 'INTO', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'CREATE', 'COPY', 'ATTACH', 'DETACH', 'INSTALL', 'LOAD', 'CALL', 'PRAGMA', 'SET', 'UNNEST', 'RANDOM', 'UUID', 'NOW', 'CURRENT_TIMESTAMP', 'CURRENT_TIME', 'CURRENT_DATE']);
+  for (let index = 0; index < tokens.offsets.length; index++) {
+    const type = tokens.types[index];
+    if (type === duckdb.TokenType.STRING_CONSTANT) continue;
+    const token = new TextDecoder().decode(bytes.subarray(tokens.offsets[index], tokens.offsets[index + 1] ?? bytes.length)).trim();
+    if (type === duckdb.TokenType.COMMENT || token === ';' || blocked.has(token.toUpperCase())) throw new Error('컬럼과 함수로 구성된 변환식만 입력하세요. SELECT·명령문·주석·집계·윈도·행 확장은 사용할 수 없습니다.');
+  }
+}
+
+function expressionValue(expression: string): string {
+  return `CAST((\n${expression}\n) AS VARCHAR)`;
+}
+
+async function previewExpression(pair: ColumnPair): Promise<{ original: string | null; expected: string | null }[]> {
+  if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
+  const columns = await columnsOf('source');
+  if (!columns.has(pair.source)) throw new Error('Source 컬럼을 확인하세요.');
+  const expression = pair.expression ?? '';
+  await assertExpression(expression);
+  const value = expressionValue(expression);
+  // Bind as a per-row expression; aggregates cannot consume a non-grouped rowid.
+  await connection.query(`SELECT rowid, ${value} AS expected FROM source LIMIT 0`);
+  // Evaluate all rows so bad casts beyond the preview also block comparison.
+  await connection.query(`SELECT count(${value}) FROM source`);
+  const result = await connection.query(`SELECT ${quoteIdentifier(pair.source)}, ${value} FROM source LIMIT 5`);
+  return Array.from({ length: result.numRows }, (_, index) => ({ original: cell(result, 0, index), expected: cell(result, 1, index) }));
+}
+
+const hasExpressions = (pairs: ColumnPair[]) => pairs.some(pair => pair.rule === 'sql');
+const expectedValue = (pair: ColumnPair, index: number) => pair.rule === 'sql' ? `e.value_${index}` : `s.${quoteIdentifier(pair.source)}`;
+const expectedJoin = (pairs: ColumnPair[]) => hasExpressions(pairs) ? 'LEFT JOIN comparison_expected e ON e.source_row = c.source_row' : '';
+
+async function prepareExpected(pairs: ColumnPair[]): Promise<void> {
+  if (!hasExpressions(pairs)) { await connection!.query('DROP TABLE IF EXISTS comparison_expected'); return; }
+  const values: string[] = [];
+  for (const [index, pair] of pairs.entries()) {
+    if (pair.rule !== 'sql') continue;
+    await assertExpression(pair.expression ?? '');
+    values.push(`${expressionValue(pair.expression!)} AS value_${index}`);
+  }
+  await connection!.query(`CREATE OR REPLACE TEMP TABLE comparison_expected AS SELECT rowid AS source_row, ${values.join(', ')} FROM source`);
+}
+
 
 // Typed value for number/date rules; NULL when the text cannot be parsed. Plain replace() is used
 // instead of regexp_replace() because it is several times faster on large columns.
@@ -169,14 +245,14 @@ function parsed(column: string, rule: CompareRule): string {
 // Unparseable number/date text falls back to the original text, and NULL stays NULL.
 function normalize(column: string, rule: CompareRule): string {
   if (rule === 'trim') return `trim(${column})`;
-  if (rule !== 'exact') return `coalesce(CAST(${parsed(column, rule)} AS VARCHAR), ${column})`;
+  if (rule !== 'exact' && rule !== 'sql') return `coalesce(CAST(${parsed(column, rule)} AS VARCHAR), ${column})`;
   return column;
 }
 
 // Value columns compare typed values directly; converting them back to text dominated the cost.
 function differs(source: string, target: string, rule: CompareRule): string {
   if (rule === 'trim') return `trim(${source}) IS DISTINCT FROM trim(${target})`;
-  if (rule !== 'exact') {
+  if (rule !== 'exact' && rule !== 'sql') {
     const [left, right] = [parsed(source, rule), parsed(target, rule)];
     // left <> right is NULL only when either side failed to parse, so each side is parsed once.
     return `coalesce(${left} <> ${right}, ${source} IS DISTINCT FROM ${target})`;
@@ -189,7 +265,7 @@ async function columnsOf(side: Side): Promise<Set<string>> {
   return new Set(schema.toArray().map(row => String(row.column_name)));
 }
 
-export async function validateKeys(side: Side, keys: { name: string; rule: CompareRule }[]): Promise<KeyCheck> {
+async function validateKeys(side: Side, keys: { name: string; rule: CompareRule; expression?: string }[]): Promise<KeyCheck> {
   if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
   if (keys.length === 0) throw new Error('KEY 컬럼을 하나 이상 선택하세요.');
@@ -199,7 +275,10 @@ export async function validateKeys(side: Side, keys: { name: string; rule: Compa
   if (new Set(keys.map(key => key.name)).size !== keys.length) throw new Error('KEY 컬럼이 중복 선택되었습니다.');
   if (keys.some(key => !rules.includes(key.rule))) throw new Error('잘못된 비교 규칙입니다.');
   // Duplicates and empty keys are judged on the normalized value, exactly as the comparison join sees it.
-  const quoted = keys.map(key => normalize(quoteIdentifier(key.name), key.rule));
+  for (const key of keys) if (side === 'source' && key.rule === 'sql') {
+    await previewExpression({ source: key.name, target: key.name, key: true, rule: 'sql', expression: key.expression });
+  }
+  const quoted = keys.map(key => normalize(side === 'source' && key.rule === 'sql' ? expressionValue(key.expression!) : quoteIdentifier(key.name), key.rule));
   const keyList = quoted.join(', ');
   const anyNull = quoted.map(key => `${key} IS NULL`).join(' OR ');
   const anyEmpty = quoted.map(key => `${key} = ''`).join(' OR ');
@@ -267,13 +346,14 @@ async function assertPairs(pairs: ColumnPair[]): Promise<ColumnPair[]> {
 }
 
 // Run only after validateKeys passed on both sides: duplicate or NULL keys would corrupt the join.
-export async function compare(pairs: ColumnPair[]): Promise<CompareSummary> {
+async function compare(pairs: ColumnPair[]): Promise<CompareSummary> {
   if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   const keys = await assertPairs(pairs);
-  const side = (alias: 's' | 't', pair: ColumnPair) => normalize(`${alias}.${quoteIdentifier(alias === 's' ? pair.source : pair.target)}`, pair.rule);
+  await prepareExpected(pairs);
+  const side = (alias: 's' | 't', pair: ColumnPair) => normalize(alias === 's' ? expectedValue(pair, pairs.indexOf(pair)) : `t.${quoteIdentifier(pair.target)}`, pair.rule);
   const on = keys.map(pair => `${side('s', pair)} = ${side('t', pair)}`).join('\n\t\tAND ');
   // changed holds indexes into pairs; NULL vs '' counts as a difference because IS DISTINCT FROM keeps them apart.
-  const changes = pairs.flatMap((pair, index) => pair.key ? [] : [`CASE WHEN ${differs(`s.${quoteIdentifier(pair.source)}`, `t.${quoteIdentifier(pair.target)}`, pair.rule)} THEN [${index}] ELSE [] END`]);
+  const changes = pairs.flatMap((pair, index) => pair.key ? [] : [`CASE WHEN ${differs(expectedValue(pair, index), `t.${quoteIdentifier(pair.target)}`, pair.rule)} THEN [${index}] ELSE [] END`]);
   const changed = changes.length ? `flatten([${changes.join(', ')}])` : '[]::INTEGER[]';
   await connection.query(`
 CREATE OR REPLACE TABLE comparison AS
@@ -295,6 +375,7 @@ FROM (
 		, t.rowid AS target_row
 		, CASE WHEN s.rowid IS NOT NULL AND t.rowid IS NOT NULL THEN ${changed} ELSE []::INTEGER[] END AS changed
 	FROM source s
+	${hasExpressions(pairs) ? 'LEFT JOIN comparison_expected e ON e.source_row = s.rowid' : ''}
 	FULL OUTER JOIN target t
 		ON ${on}
 )`);
@@ -318,12 +399,12 @@ FROM comparison`);
 const statuses: Status[] = ['MATCH', 'MODIFIED', 'ADDED', 'DELETED'];
 
 // Reads one page of comparison rows; values come from the original tables via rowid, never copied.
-export async function fetchResults(pairs: ColumnPair[], status: Status | undefined, page: number, pageSize: number): Promise<ResultRow[]> {
+async function fetchResults(pairs: ColumnPair[], status: Status | undefined, page: number, pageSize: number): Promise<ResultRow[]> {
   if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   if (status !== undefined && !statuses.includes(status)) throw new Error('잘못된 상태 값입니다.');
   if (!Number.isSafeInteger(page) || page < 0 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 1000) throw new Error('잘못된 페이지 값입니다.');
   const keys = await assertPairs(pairs);
-  const keyValues = keys.map((pair, index) => `\n\t, coalesce(s.${quoteIdentifier(pair.source)}, t.${quoteIdentifier(pair.target)}) AS key_${index}`).join('');
+  const keyValues = keys.map((pair, index) => `\n\t, coalesce(${expectedValue(pair, pairs.indexOf(pair))}, t.${quoteIdentifier(pair.target)}) AS key_${index}`).join('');
   const result = await connection.query(`
 SELECT
 	c.status
@@ -344,6 +425,7 @@ LEFT JOIN source s
 	ON s.rowid = c.source_row
 LEFT JOIN target t
 	ON t.rowid = c.target_row
+${expectedJoin(pairs)}
 ORDER BY
 	c.source_row NULLS LAST
 	, c.target_row`);
@@ -360,7 +442,7 @@ ORDER BY
 }
 
 // Values of every mapped column for one original row, in pairs order.
-export async function fetchRow(side: Side, pairs: ColumnPair[], rowid: number): Promise<(string | null)[]> {
+async function fetchRow(side: Side, pairs: ColumnPair[], rowid: number): Promise<(string | null)[]> {
   if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   if (side !== 'source' && side !== 'target') throw new Error('잘못된 데이터 구분입니다.');
   if (!Number.isSafeInteger(rowid) || rowid < 0) throw new Error('잘못된 행 번호입니다.');
@@ -375,6 +457,14 @@ WHERE rowid = ${rowid}`);
   return pairs.map((_, column) => cell(result, column, 0));
 }
 
+async function fetchExpectedRow(pairs: ColumnPair[], rowid: number): Promise<(string | null)[]> {
+  if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
+  if (!Number.isSafeInteger(rowid) || rowid < 0) throw new Error('잘못된 행 번호입니다.');
+  const result = await connection.query(`SELECT ${pairs.map(expectedValue).join(', ')} FROM source s LEFT JOIN comparison_expected e ON e.source_row = s.rowid WHERE s.rowid = ${rowid}`);
+  if (result.numRows !== 1) throw new Error('원본 행을 찾지 못했습니다.');
+  return pairs.map((_, index) => cell(result, index, 0));
+}
+
 function columnLabel(pair: ColumnPair): string {
   return pair.source === pair.target ? pair.source : `${pair.source} / ${pair.target}`;
 }
@@ -385,7 +475,8 @@ function exportQuery(pairs: ColumnPair[], kind: ExportKind, from: number, to: nu
 LEFT JOIN source s
 	ON s.rowid = c.source_row
 LEFT JOIN target t
-	ON t.rowid = c.target_row`;
+	ON t.rowid = c.target_row
+${expectedJoin(pairs)}`;
   const keyValues = pairs.flatMap(pair => pair.key ? [`coalesce(s.${quoteIdentifier(pair.source)}, t.${quoteIdentifier(pair.target)}) AS ${quoteIdentifier(pair.source)}`] : []);
   const keyColumns = keyValues.map(value => `\n\t, ${value}`).join('');
   const compared = pairs.map((pair, index) => ({ pair, index })).filter(({ pair }) => !pair.key);
@@ -410,6 +501,7 @@ SELECT
 	${keyValues.join('\n\t, ')}
 	, ${pick(pair => quoteLiteral(columnLabel(pair)))} AS "COLUMN_NAME"
 	, ${pick(pair => `s.${quoteIdentifier(pair.source)}`)} AS "SOURCE_VALUE"
+	${hasExpressions(pairs) ? `, ${pick(pair => expectedValue(pair, pairs.indexOf(pair)))} AS "EXPECTED_VALUE"` : ''}
 	, ${pick(pair => `t.${quoteIdentifier(pair.target)}`)} AS "TARGET_VALUE"
 FROM (
 	SELECT
@@ -425,6 +517,7 @@ LEFT JOIN source s
 	ON s.rowid = c.source_row
 LEFT JOIN target t
 	ON t.rowid = c.target_row
+${expectedJoin(pairs)}
 ORDER BY
 	c.ord
 	, c.idx`;
@@ -432,7 +525,7 @@ ORDER BY
   const changedNames = compared.length
     ? `nullif(concat_ws(', '${compared.map(({ pair, index }) => `, CASE WHEN list_contains(c.changed, ${index}) THEN ${quoteLiteral(columnLabel(pair))} END`).join('')}), '')`
     : 'NULL';
-  const values = compared.map(({ pair }) => `\n\t, s.${quoteIdentifier(pair.source)} AS ${quoteIdentifier(`${pair.source} (SOURCE)`)}\n\t, t.${quoteIdentifier(pair.target)} AS ${quoteIdentifier(`${pair.target} (TARGET)`)}`).join('');
+  const values = pairs.map((pair, index) => ({ pair, index })).filter(({ pair }) => !pair.key || pair.rule === 'sql').map(({ pair, index }) => `\n\t, s.${quoteIdentifier(pair.source)} AS ${quoteIdentifier(`${pair.source} (SOURCE)`)}${pair.rule === 'sql' ? `\n\t, ${expectedValue(pair, index)} AS ${quoteIdentifier(`${pair.source} (EXPECTED)`)}` : ''}\n\t, t.${quoteIdentifier(pair.target)} AS ${quoteIdentifier(`${pair.target} (TARGET)`)}`).join('');
   return `
 SELECT
 	c.status AS "STATUS"${keyColumns}
@@ -447,7 +540,7 @@ const exportChunk = 100_000;
 
 // DuckDB writes each chunk into its virtual file system; chunks become Blobs right away so the
 // browser can keep them outside the page heap and the WASM heap never holds the whole result.
-export async function exportCsv(pairs: ColumnPair[], kind: ExportKind): Promise<Blob> {
+async function exportCsv(pairs: ColumnPair[], kind: ExportKind): Promise<Blob> {
   if (!database || !connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
   if (!['ALL', 'ADDED', 'DELETED', 'MODIFIED'].includes(kind)) throw new Error('잘못된 다운로드 구분입니다.');
   await assertPairs(pairs);
@@ -467,7 +560,7 @@ export async function exportCsv(pairs: ColumnPair[], kind: ExportKind): Promise<
   return new Blob(parts);
 }
 
-export async function dispose(): Promise<void> {
+async function dispose(): Promise<void> {
   try { await connection?.close(); } finally {
     connection = undefined;
     try { await database?.terminate(); } finally {
@@ -477,3 +570,38 @@ export async function dispose(): Promise<void> {
     }
   }
 }
+
+// Read mismatch records in pages, including all values in one query rather than one query per cell.
+async function fetchMismatchDetails(pairs: ColumnPair[], page: number) {
+  if (!connection) throw new Error('DuckDB가 아직 준비되지 않았습니다.');
+  if (!Number.isSafeInteger(page) || page < 0) throw new Error('잘못된 페이지 값입니다.');
+  const fields = pairs.flatMap((pair, i) => [
+    `s.${quoteIdentifier(pair.source)} AS source_${i}`,
+    `${expectedValue(pair, i)} AS expected_${i}`,
+    `t.${quoteIdentifier(pair.target)} AS target_${i}`,
+  ]);
+  const result = await connection.query(`SELECT c.*, ${fields.join(', ')}
+    FROM (SELECT * FROM comparison WHERE status != 'MATCH' ORDER BY ord LIMIT 1000 OFFSET ${page * 1000}) c
+    LEFT JOIN source s ON s.rowid = c.source_row
+    LEFT JOIN target t ON t.rowid = c.target_row
+    ${expectedJoin(pairs)} ORDER BY c.ord`);
+  const indexes = pairs.map((_, i) => ['source', 'expected', 'target'].map(side => result.schema.fields.findIndex(f => f.name === `${side}_${i}`)));
+  return Array.from({ length: result.numRows }, (_, r) => {
+    const row = result.get(r)!;
+    return {
+      status: String(row.status),
+      sourceRow: row.source_row == null ? null : Number(row.source_row),
+      targetRow: row.target_row == null ? null : Number(row.target_row),
+      changed: Array.from(row.changed ?? [], Number),
+      source: indexes.map(columns => cell(result, columns[0], r)),
+      expected: indexes.map(columns => cell(result, columns[1], r)),
+      target: indexes.map(columns => cell(result, columns[2], r)),
+    };
+  });
+}
+
+return { setSqlTableName, initialize, loadCsv, clearCsv, transformTable, resetTable, previewExpression, validateKeys, compare, fetchResults, fetchRow, fetchExpectedRow, exportCsv, dispose, fetchMismatchDetails };
+}
+
+export type DuckDbClient = ReturnType<typeof createClient>;
+export const { setSqlTableName, initialize, loadCsv, clearCsv, transformTable, resetTable, previewExpression, validateKeys, compare, fetchResults, fetchRow, fetchExpectedRow, exportCsv, dispose, fetchMismatchDetails } = createClient();

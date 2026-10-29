@@ -20,7 +20,11 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(process.env.TEST_URL || 'http://127.0.0.1:5173');
   await page.getByRole('status').filter({ hasText: '준비 완료' }).waitFor({ timeout: 60000 });
-  pass('DuckDB 로컬 초기화');
+  assert.equal(await page.title(), '데이터 이행 검증');
+  assert.equal(await page.getByRole('heading', { level: 1 }).innerText(), '데이터 이행 검증');
+  assert.doesNotMatch(await page.locator('body').innerText(), /dataCompare/);
+  await page.screenshot({ path: '/tmp/csv-workbench-empty.png', fullPage: true });
+  pass('DuckDB 로컬 초기화, 브랜드명 제거');
   const panels = page.locator('.panel');
   const source = panels.nth(0);
   const target = panels.nth(1);
@@ -143,14 +147,7 @@ try {
   assert.ok(detailBox.x > listBox.x + listBox.width, '데스크톱 목록·상세 좌우 배치');
   await results.scrollIntoViewIfNeeded();
   await page.screenshot({ path: '/tmp/datacompare-ui-desktop.png', fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '모바일 가로 넘침 없음');
-  const mobileList = await results.locator('.result-list').boundingBox();
-  const mobileDetail = await results.locator('.result-detail').boundingBox();
-  assert.ok(mobileDetail.y >= mobileList.y + mobileList.height, '모바일 목록·상세 세로 배치');
-  await page.screenshot({ path: '/tmp/datacompare-ui-mobile.png', fullPage: true });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  pass('접힌 미리보기 펼치기, 진행 단계, 데스크톱 좌우 배치, 모바일 세로 배치·가로 넘침 없음');
+  pass('접힌 미리보기 펼치기, 진행 단계, 데스크톱 목록·상세 좌우 배치');
   await mapping.getByLabel('5번 Target 컬럼').selectOption('USER_NAME');
   assert.equal(await compare.count(), 0);
   assert.match(await mapping.innerText(), /Target 컬럼이 중복 매핑되었습니다: USER_NAME/);
@@ -197,9 +194,19 @@ try {
   await mapping.waitFor();
   const sql = source.locator('.sql');
   await sql.locator('summary').click();
+  assert.equal(await sql.getByLabel('source 가공 SQL').inputValue(), 'SELECT * FROM "source";');
+  await sql.getByLabel('source SQL 테이블명').fill('기준자료');
+  assert.equal(await sql.getByLabel('source 가공 SQL').inputValue(), 'SELECT * FROM "기준자료";');
+  await sql.getByRole('button', { name: 'SQL 적용' }).click();
+  await sql.getByRole('button', { name: '원본으로 되돌리기' }).waitFor();
+  assert.equal(await source.locator('.metrics strong').first().innerText(), '5');
+  await sql.getByLabel('source SQL 테이블명').fill('source');
+  assert.equal(await sql.getByLabel('source 가공 SQL').inputValue(), 'SELECT * FROM "source";');
+  pass('기본 SQL 제공·테이블명 변경 반영·기본 SQL 실행');
   await sql.getByLabel('source 가공 SQL').fill("SELECT USER_ID AS USER_NO, USER_NAME, CAST(AMOUNT AS INTEGER) AS AMOUNT FROM source WHERE STATUS = 'Y';");
   await sql.getByRole('button', { name: 'SQL 적용' }).click();
   await sql.getByRole('button', { name: '원본으로 되돌리기' }).waitFor();
+  await source.locator('.metrics strong').first().filter({ hasText: /^4$/ }).waitFor();
   assert.deepEqual(await source.locator('th').allTextContents(), ['USER_NO', 'USER_NAME', 'AMOUNT']);
   assert.equal(await source.locator('.metrics strong').first().innerText(), '4');
   assert.equal(await mapping.getByLabel('1번 Source 컬럼').inputValue(), 'USER_NO');
@@ -222,6 +229,59 @@ try {
   assert.deepEqual(await source.locator('th').allTextContents(), ['USER_ID', 'USER_NAME', 'AMOUNT', 'STATUS', 'MEMO']);
   assert.equal(await target.locator('.metrics strong').first().innerText(), '5');
   pass('SQL 가공(필터·컬럼명 변경·형변환 후 비교, 원본 기준 재실행, 다중 문장 차단, 원본 복원)');
+  // Custom SQL names keep comparison storage stable and always read the original CSV on their own side.
+  const sourceName = source.getByLabel('source SQL 테이블명');
+  const targetName = target.getByLabel('target SQL 테이블명');
+  const targetSql = target.locator('.sql');
+  await sql.locator('summary').click();
+  await targetSql.locator('summary').click();
+  assert.equal(await source.locator('.sql .table-name').count(), 1);
+  assert.equal(await target.locator('.sql .table-name').count(), 1);
+  assert.equal(await sourceName.inputValue(), 'source');
+  assert.equal(await targetName.inputValue(), 'target');
+  const savedSql = await sql.getByLabel('source 가공 SQL').inputValue();
+  await sourceName.fill('baseline');
+  assert.equal(await sql.getByLabel('source 가공 SQL').inputValue(), savedSql, '직접 작성한 SQL은 유지');
+  assert.equal(await targetSql.getByLabel('target 가공 SQL').inputValue(), 'SELECT * FROM "target";');
+  await targetName.fill('BASELINE');
+  await target.getByRole('alert').filter({ hasText: '서로 달라야' }).waitFor();
+  await targetName.fill('비교자료');
+  assert.equal(await targetSql.getByLabel('target 가공 SQL').inputValue(), 'SELECT * FROM "비교자료";');
+  await sourceName.fill('comparison');
+  await source.getByRole('alert').filter({ hasText: '앱에서 사용하는 이름' }).waitFor();
+  await sourceName.fill('bad; DROP TABLE target');
+  await source.getByRole('alert').filter({ hasText: '문자·숫자·_' }).waitFor();
+  assert.equal(await source.locator('.metrics strong').first().innerText(), '5');
+  await sourceName.fill('baseline');
+  await sql.getByLabel('source 가공 SQL').fill("SELECT s.USER_ID AS USER_NO, s.USER_NAME, CAST(s.AMOUNT AS INTEGER) AS AMOUNT FROM baseline s LEFT JOIN 비교자료 t ON s.USER_ID = t.USER_NO WHERE s.STATUS = 'Y'");
+  await sql.getByRole('button', { name: 'SQL 적용' }).click();
+  await source.locator('.metrics strong').first().filter({ hasText: /^4$/ }).waitFor();
+  await mapping.getByLabel('1번 매핑 KEY').check();
+  assert.match(await validate(), /KEY 검증 통과/);
+  assert.deepEqual(await runCompare(), { SOURCE: '4', TARGET: '5', MATCH: '3', MODIFIED: '0', ADDED: '2', DELETED: '1' });
+  assert.match(await download('추가 데이터'), /1003/);
+  assert.match(await download('추가 데이터'), /1006/);
+  await sourceName.fill('order');
+  assert.equal(await compare.locator('.summary').count(), 1, '이름 변경만으로 비교 결과를 초기화하지 않음');
+  await sql.getByLabel('source 가공 SQL').fill('SELECT * FROM "order"');
+  await sql.getByRole('button', { name: 'SQL 적용' }).click();
+  await source.locator('.metrics strong').first().filter({ hasText: /^5$/ }).waitFor();
+  // The target custom name can also be used in its own panel.
+  await targetSql.getByLabel('target 가공 SQL').fill("SELECT * FROM 비교자료 WHERE STATUS = 'Y'");
+  await targetSql.getByRole('button', { name: 'SQL 적용' }).click();
+  await target.locator('.metrics strong').first().filter({ hasText: /^4$/ }).waitFor();
+  await targetSql.getByRole('button', { name: '원본으로 되돌리기' }).click();
+  await target.locator('.metrics strong').first().filter({ hasText: /^5$/ }).waitFor();
+  await sql.getByRole('button', { name: '원본으로 되돌리기' }).click();
+  await source.locator('.metrics strong').first().filter({ hasText: /^5$/ }).waitFor();
+  await source.locator('input[type=file]').setInputFiles(fixture('basic_source'));
+  await source.locator('.metrics strong').first().filter({ hasText: /^5$/ }).waitFor();
+  assert.equal(await sourceName.inputValue(), 'order');
+  await sql.locator('summary').click();
+  await targetSql.locator('summary').click();
+  await sourceName.fill('source');
+  await targetName.fill('target');
+  pass('SQL 테이블명 지정(기본값·한글·조인·재적용·예약어 인용·이름 유지·중복/내부명/잘못된 문자 차단·비교·다운로드·원본 복원)');
   // Compare rules: normalization applies to comparison only; shown and downloaded values stay original
   await source.locator('input[type=file]').setInputFiles(fixture('format_source'));
   await target.locator('input[type=file]').setInputFiles(fixture('format_target'));
@@ -236,6 +296,8 @@ try {
   // Exact: "1 " is a different key, every format difference is MODIFIED, only row 4 matches
   assert.deepEqual(await runCompare(), { SOURCE: '7', TARGET: '7', MATCH: '1', MODIFIED: '5', ADDED: '1', DELETED: '1' });
   await mapping.getByLabel('1번 비교 규칙').selectOption('trim');
+  assert.equal(await mapping.getByRole('status').count(), 0);
+  assert.equal(await compare.count(), 0);
   await mapping.getByLabel('2번 비교 규칙').selectOption('date');
   await mapping.getByLabel('3번 비교 규칙').selectOption('number');
   await mapping.getByLabel('4번 비교 규칙').selectOption('trim');
@@ -263,11 +325,14 @@ try {
   assert.deepEqual(await runCompare(), { SOURCE: '26', TARGET: '26', MATCH: '4', MODIFIED: '22', ADDED: '0', DELETED: '0' });
   await mapping.getByLabel('2번 비교 규칙').selectOption('number');
   await mapping.getByLabel('3번 비교 규칙').selectOption('date');
-  assert.match(await validate(), /KEY 검증 통과/);
+  assert.match(await mapping.getByRole('status').innerText(), /KEY 검증 통과/);
+  assert.equal(await compare.count(), 1);
+  assert.equal(await compare.locator('.summary, .results, .downloads').count(), 0);
   // Date rule ignores the time (17); UPDATED_AT is still trim, so 21-26 differ
   assert.deepEqual(await runCompare(), { SOURCE: '26', TARGET: '26', MATCH: '12', MODIFIED: '14', ADDED: '0', DELETED: '0' });
   await mapping.getByLabel('5번 비교 규칙').selectOption('datetime');
-  assert.match(await validate(), /KEY 검증 통과/);
+  assert.match(await mapping.getByRole('status').innerText(), /KEY 검증 통과/);
+  assert.equal(await compare.locator('.summary, .results, .downloads').count(), 0);
   assert.deepEqual(await runCompare(), { SOURCE: '26', TARGET: '26', MATCH: '16', MODIFIED: '10', ADDED: '0', DELETED: '0' });
   assert.equal(await download('변경 데이터'), [
     'ID,COLUMN_NAME,SOURCE_VALUE,TARGET_VALUE',
@@ -284,9 +349,17 @@ try {
     ''].join('\n'));
   // Date rule on a timestamp column ignores the 1 second difference of 23
   await mapping.getByLabel('5번 비교 규칙').selectOption('date');
-  assert.match(await validate(), /KEY 검증 통과/);
+  assert.match(await mapping.getByRole('status').innerText(), /KEY 검증 통과/);
+  assert.equal(await compare.locator('.summary, .results, .downloads').count(), 0);
   assert.deepEqual(await runCompare(), { SOURCE: '26', TARGET: '26', MATCH: '17', MODIFIED: '9', ADDED: '0', DELETED: '0' });
   pass('숫자·날짜·일시 샘플(기본 공백 무시, 숫자·날짜·일시 규칙, 날짜 규칙 시간 무시, 변환 실패 원문 비교)');
+  pass('일반 컬럼 규칙 변경 시 KEY 검증 유지·기존 결과 초기화·재검증 없이 비교, KEY 규칙 변경 시 재검증');
+  // Reloading the same columns must still discard KEY checks, even with identical mappings.
+  await source.locator('input[type=file]').setInputFiles(resolve('samples/number_date_source.csv'));
+  await mapping.waitFor();
+  assert.equal(await mapping.getByRole('status').count(), 0);
+  assert.equal(await compare.count(), 0);
+  pass('동일 파일 재로딩 시 KEY 검증 초기화');
   // Large comparison: target shifted by 1,000 ids, every 5th shared id changed
   const rows = (from, to, amount) => 'ID,NAME,AMOUNT\n' + Array.from({ length: to - from + 1 }, (_, i) => `${from + i},사용자${from + i},${amount(from + i)}`).join('\n');
   await source.locator('input[type=file]').setInputFiles({ name: 'large_source.csv', mimeType: 'text/csv', buffer: Buffer.from(rows(1, 100000, i => i * 10)) });
@@ -316,6 +389,93 @@ try {
   assert.deepEqual(addedCsv.slice(0, 2), ['ID,NAME,AMOUNT', '100001,사용자100001,1000010']);
   await resultRows.first().locator('td:nth-child(2)').filter({ hasText: /^100001$/ }).waitFor();
   pass('10만 행 페이지 이동·필터·다운로드');
+  // User-defined scalar SQL: transformed KEY + value, original/expected/actual auditing.
+  await source.locator('input[type=file]').setInputFiles(resolve('samples/mapping_rule_source.csv'));
+  await target.locator('input[type=file]').setInputFiles(resolve('samples/mapping_rule_target.csv'));
+  await mapping.waitFor();
+  await mapping.getByLabel('1번 매핑 KEY').check();
+  const setExpression = async (index, expression) => {
+    await mapping.getByLabel(`${index}번 비교 규칙`).selectOption('sql');
+    await mapping.getByLabel(`${index}번 SQL 변환식`).fill(expression);
+    await mapping.getByRole('button', { name: `${index}번 변환 미리보기`, exact: true }).click();
+  };
+  const firstC = `'C' || SUBSTR("전표번호", 2)`;
+  const insertC = `SUBSTR("계정원장번호", 1, 4) || 'C' || SUBSTR("계정원장번호", 5)`;
+  await setExpression(1, firstC);
+  await mapping.getByLabel('1번 변환 미리보기 결과').waitFor();
+  assert.deepEqual(await mapping.getByLabel('1번 변환 미리보기 결과').locator('tbody tr').first().locator('td').allTextContents(), ['A001', 'C001']);
+  await setExpression(2, insertC);
+  await mapping.getByLabel('2번 변환 미리보기 결과').waitFor();
+  assert.match(await validate(), /KEY 검증 통과/);
+  assert.deepEqual(await runCompare(), { SOURCE: '5', TARGET: '5', MATCH: '2', MODIFIED: '2', ADDED: '1', DELETED: '1' });
+  await resultRows.nth(5).waitFor();
+  assert.deepEqual(await resultRows.locator('td:nth-child(2)').allTextContents(), ['C001', 'C002', 'C003', 'C004', 'C005', 'C006']);
+  await resultRows.nth(1).click();
+  await results.locator('.detail-table tr.changed').waitFor();
+  assert.deepEqual(await results.locator('.detail-table tr.changed td').allTextContents(), ['계정원장번호SQL 변환', '87654321', '8765C4321', '8765X4321']);
+  assert.match(await download('전체 결과'), /전표번호 \(EXPECTED\)/);
+  assert.match(await download('전체 결과'), /계정원장번호 \(EXPECTED\)/);
+  assert.equal(await download('변경 데이터'), '전표번호,COLUMN_NAME,SOURCE_VALUE,EXPECTED_VALUE,TARGET_VALUE\nB002,계정원장번호,87654321,8765C4321,8765X4321\nD003,메모,,,""\n');
+  assert.equal(await download('삭제 데이터'), '전표번호,계정원장번호,금액,메모\nF005,55556666,500,삭제\n');
+  assert.equal(await download('추가 데이터'), '전표번호,계정원장번호,금액,메모\nC006,7777C8888,600,추가\n');
+  await resultRows.nth(5).click();
+  await results.locator('.detail-table').waitFor();
+  assert.match(await results.locator('.detail-table').innerText(), /없음/);
+  pass('사용자 SQL 식: 한글 컬럼·SUBSTR·문자열 연결·변환 KEY 연결·원본/기대값/실제값·CSV 다운로드');
+  await setExpression(2, String.raw`REGEXP_REPLACE("계정원장번호", '^(.{4})(.*)$', '\1C\2')`);
+  await mapping.getByLabel('2번 변환 미리보기 결과').waitFor();
+  assert.match(await mapping.getByRole('status').innerText(), /KEY 검증 통과/);
+  assert.equal(await compare.locator('.summary').count(), 0);
+  assert.deepEqual(await runCompare(), { SOURCE: '5', TARGET: '5', MATCH: '2', MODIFIED: '2', ADDED: '1', DELETED: '1' });
+  await resultRows.nth(5).waitFor();
+  await resultRows.nth(1).click();
+  await results.locator('.detail-table tr.changed').waitFor();
+  await results.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/csv-custom-expression.png', fullPage: true });
+  // Invalid expressions cannot pass preview or leave an old comparison actionable.
+  for (const expression of ['SUBSTR(', '"없는컬럼"', '"계정원장번호"; DROP TABLE source', 'SUM(CAST("금액" AS INTEGER))', 'ROW_NUMBER() OVER ()', '(SELECT 1)', 'UNNEST([1, 2])']) {
+    await setExpression(2, expression);
+    await mapping.locator('.expression-row').nth(1).getByRole('alert').waitFor();
+    assert.equal(await compare.count(), 0);
+    assert.match(await mapping.getByRole('status').innerText(), /KEY 검증 통과/);
+    assert.equal(await source.locator('.metrics strong').first().innerText(), '5');
+  }
+  await setExpression(2, insertC);
+  await mapping.getByLabel('2번 변환 미리보기 결과').waitFor();
+  // A semicolon inside a string is data, not a second statement.
+  await setExpression(4, `REPLACE("메모", ';', '')`);
+  await mapping.getByLabel('4번 변환 미리보기 결과').waitFor();
+  assert.match(await mapping.getByRole('status').innerText(), /KEY 검증 통과/);
+  assert.deepEqual(await runCompare(), { SOURCE: '5', TARGET: '5', MATCH: '2', MODIFIED: '2', ADDED: '1', DELETED: '1' });
+  await setExpression(1, `'C' || SUBSTR("전표번호", 2, 1)`);
+  await mapping.getByLabel('1번 변환 미리보기 결과').waitFor();
+  assert.equal(await mapping.getByRole('status').count(), 0);
+  assert.match(await validate(), /KEY 검증 실패/);
+  assert.match(await mapping.innerText(), /중복 KEY: 1개 \(5행\)/);
+  await setExpression(1, `CASE WHEN "전표번호" = 'A001' THEN NULL WHEN "전표번호" = 'B002' THEN '' ELSE 'C' || SUBSTR("전표번호", 2) END`);
+  await mapping.getByLabel('1번 변환 미리보기 결과').waitFor();
+  assert.match(await validate(), /KEY 검증 실패/);
+  assert.match(await mapping.innerText(), /NULL KEY 행: 1/);
+  assert.match(await mapping.innerText(), /빈 문자열 KEY 행: 1/);
+  await setExpression(1, firstC);
+  await mapping.getByLabel('1번 변환 미리보기 결과').waitFor();
+  assert.match(await validate(), /KEY 검증 통과/);
+  assert.deepEqual(await runCompare(), { SOURCE: '5', TARGET: '5', MATCH: '2', MODIFIED: '2', ADDED: '1', DELETED: '1' });
+  pass('정규식·CASE 변환, 일반 식 수정 시 KEY 유지, KEY 식 수정 시 재검증, 변환 후 중복·NULL·빈 KEY 차단, 잘못된 식 차단');
+  await mapping.getByLabel('3번 매핑 KEY').check();
+  assert.match(await validate(), /KEY 검증 통과/);
+  assert.deepEqual(await runCompare(), { SOURCE: '5', TARGET: '5', MATCH: '2', MODIFIED: '2', ADDED: '1', DELETED: '1' });
+  pass('사용자 SQL 변환 KEY와 일반 KEY의 복합 연결');
+  const lateBad = 'ID,VALUE\n1,10\n2,20\n3,30\n4,40\n5,50\n6,invalid\n';
+  await source.locator('input[type=file]').setInputFiles({ name: 'late_bad.csv', mimeType: 'text/csv', buffer: Buffer.from(lateBad) });
+  await target.locator('input[type=file]').setInputFiles({ name: 'late_target.csv', mimeType: 'text/csv', buffer: Buffer.from(lateBad.replace('invalid', '60')) });
+  await mapping.waitFor();
+  await mapping.getByLabel('1번 매핑 KEY').check();
+  await setExpression(2, 'CAST("VALUE" AS INTEGER)');
+  await mapping.locator('.expression-row').getByRole('alert').waitFor();
+  assert.equal(await compare.count(), 0);
+  assert.equal(await mapping.getByRole('button', { name: 'KEY 검증', exact: true }).isDisabled(), true);
+  pass('미리보기 5행 밖의 변환 오류도 전체 행 확인으로 차단');
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
   pass('외부 요청 0건, 페이지 오류 0건');

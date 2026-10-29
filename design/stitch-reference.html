@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CSV 비교 · 검증</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&amp;family=Noto+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-primary-fixed-variant": "#372abf",
+            "surface-container-high": "#e2e7ff",
+            "primary-container": "#4338ca",
+            "error": "#ba1a1a",
+            "on-tertiary": "#ffffff",
+            "tertiary-fixed-dim": "#ffb597",
+            "on-primary-container": "#c1beff",
+            "outline-variant": "#c7c4d7",
+            "on-secondary-container": "#004666",
+            "on-tertiary-fixed": "#360f00",
+            "surface-container-highest": "#dae2fd",
+            "on-error": "#ffffff",
+            "surface-variant": "#dae2fd",
+            "on-surface-variant": "#464554",
+            "secondary-container": "#39b8fd",
+            "on-surface": "#131b2e",
+            "primary-fixed": "#e3dfff",
+            "tertiary-container": "#8f3400",
+            "on-tertiary-fixed-variant": "#7d2d00",
+            "surface-container-lowest": "#ffffff",
+            "inverse-on-surface": "#eef0ff",
+            "on-secondary-fixed-variant": "#004c6e",
+            "on-tertiary-container": "#ffb393",
+            "surface-container": "#eaedff",
+            "inverse-surface": "#283044",
+            "primary": "#2a14b4",
+            "on-background": "#131b2e",
+            "on-primary-fixed": "#100069",
+            "tertiary": "#692400",
+            "on-primary": "#ffffff",
+            "surface": "#faf8ff",
+            "error-container": "#ffdad6",
+            "tertiary-fixed": "#ffdbcd",
+            "surface-dim": "#d2d9f4",
+            "on-error-container": "#93000a",
+            "secondary-fixed": "#c9e6ff",
+            "outline": "#777586",
+            "on-secondary": "#ffffff",
+            "surface-container-low": "#f2f3ff",
+            "secondary-fixed-dim": "#89ceff",
+            "secondary": "#006591",
+            "primary-fixed-dim": "#c3c0ff",
+            "surface-bright": "#faf8ff",
+            "surface-tint": "#5148d7",
+            "on-secondary-fixed": "#001e2f",
+            "background": "#faf8ff",
+            "inverse-primary": "#c3c0ff"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "gutter": "0.75rem",
+            "space-xs": "0.25rem",
+            "space-lg": "1rem",
+            "space-sm": "0.5rem",
+            "space-md": "0.75rem",
+            "space-xl": "1.5rem",
+            "margin": "1rem"
+          },
+          "fontFamily": {
+            "body-md": ["Noto Sans"],
+            "tabular-data": ["Noto Sans"],
+            "label-sm": ["Noto Sans"],
+            "headline-sm": ["Noto Sans"],
+            "label-md": ["Noto Sans"],
+            "body-sm": ["Noto Sans"],
+            "headline-lg": ["Noto Sans"],
+            "headline-md": ["Noto Sans"],
+            "code-md": ["JetBrains Mono"]
+          },
+          "fontSize": {
+            "body-md": ["0.875rem", { "lineHeight": "1.375rem", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "tabular-data": ["0.8125rem", { "lineHeight": "1.125rem", "letterSpacing": "0em", "fontWeight": "400" }],
+            "label-sm": ["0.6875rem", { "lineHeight": "0.875rem", "letterSpacing": "0.04em", "fontWeight": "600" }],
+            "headline-sm": ["1rem", { "lineHeight": "1.5rem", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "label-md": ["0.75rem", { "lineHeight": "1rem", "letterSpacing": "0.02em", "fontWeight": "600" }],
+            "body-sm": ["0.8125rem", { "lineHeight": "1.25rem", "letterSpacing": "-0.005em", "fontWeight": "400" }],
+            "headline-lg": ["1.5rem", { "lineHeight": "2rem", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "headline-md": ["1.25rem", { "lineHeight": "1.75rem", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "code-md": ["0.8125rem", { "lineHeight": "1.25rem", "letterSpacing": "0em", "fontWeight": "500" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    body {
+      font-family: 'Noto Sans', sans-serif;
+      font-variant-numeric: tabular-nums;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      font-size: 18px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-[#f8fafc] text-on-surface antialiased">
+<!-- SHARED COMPONENT: TopNavBar (from Shared Components JSON) -->
+<header class="w-full bg-surface-container-lowest border-b border-outline-variant transition-colors duration-150 ease-in-out sticky top-0 z-50 shadow-sm">
+<div class="max-w-[1440px] mx-auto px-space-xl py-space-sm flex flex-col gap-2">
+<!-- Top Bar: Brand, Privacy Pill, Engine Status, Trailing Actions -->
+<div class="flex items-center justify-between gap-4">
+<div class="flex items-center gap-3">
+<h1 class="text-headline-sm font-headline-sm text-on-surface font-semibold tracking-tight">CSV 비교 · 검증</h1>
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-sm font-label-sm bg-emerald-50 text-emerald-800 border border-emerald-200">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            로컬 전용 (외부 서버 전송 없음)
+          </span>
+<p class="text-body-sm font-body-sm text-on-surface-variant hidden xl:inline">브라우저 메모리 내 안전한 로컬 비교 처리 도구</p>
+</div>
+<!-- Trailing actions from TopNavBar JSON -->
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1 text-on-surface-variant border-r border-outline-variant pr-2 mr-1">
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors duration-150" title="새로고침">
+<span class="material-symbols-outlined">refresh</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors duration-150" title="환경설정">
+<span class="material-symbols-outlined">tune</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors duration-150" title="도움말">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+</div>
+<button class="px-3 py-1.5 text-label-md font-label-md bg-surface-container-lowest text-on-surface border border-outline-variant rounded hover:bg-surface-container-high transition-colors duration-150 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px]">file_download</span>
+            불일치 내역만 내보내기
+          </button>
+<button class="px-3 py-1.5 text-label-md font-label-md bg-primary-container text-on-primary rounded hover:bg-primary transition-colors duration-150 flex items-center gap-1.5 shadow-sm">
+<span class="material-symbols-outlined text-[16px]">download</span>
+            전체 결과 내보내기
+          </button>
+</div>
+</div>
+<!-- Navigation Links from JSON: 01, 02 (active), 03 -->
+<nav class="flex items-center gap-6 pt-1">
+<div class="text-on-surface-variant pb-1 font-medium hover:text-on-surface text-label-md font-label-md flex items-center gap-1.5 cursor-pointer">
+<span class="w-4 h-4 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold">✓</span>
+          01 파일 선택
+        </div>
+<div class="text-primary font-semibold border-b-2 border-primary pb-1 text-label-md font-label-md flex items-center gap-1.5 cursor-pointer">
+<span class="w-4 h-4 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-bold">2</span>
+          02 컬럼 매핑·검증
+        </div>
+<div class="text-on-surface-variant pb-1 font-medium hover:text-on-surface text-label-md font-label-md flex items-center gap-1.5 cursor-pointer">
+<span class="w-4 h-4 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold">3</span>
+          03 비교 및 결과
+        </div>
+</nav>
+</div>
+</header>
+<!-- Slim Engine Status Line -->
+<div class="w-full bg-[#f1f5f9] border-b border-[#e2e8f0] py-1 px-space-xl">
+<div class="max-w-[1440px] mx-auto flex items-center justify-between text-label-sm font-label-sm text-[#475569]">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-[#10b981]"></span>
+<span>엔진 상태: <strong class="text-[#0f172a] font-medium">정상 가동 중 (WASM In-Memory Engine)</strong> · 할당 메모리 <strong class="text-[#0f172a] font-medium">34.2 MB</strong> · 연산 지연 <strong class="text-[#0f172a] font-medium">0ms</strong></span>
+</div>
+<div class="flex items-center gap-3 text-slate-500 font-mono-code text-[11px]">
+<span>THREAD_POOL: 4_WORKERS</span>
+<span>·</span>
+<span>BUFFER_POOL: ALLOCATED</span>
+</div>
+</div>
+</div>
+<!-- Main Canvas Container (Fixed 1440px Workbench layout) -->
+<main class="w-full max-w-[1440px] mx-auto px-space-xl py-space-lg flex flex-col gap-6 flex-1">
+<!-- Section 1: Side-by-Side File Cards (Source vs Target) -->
+<section class="grid grid-cols-2 gap-space-lg">
+<!-- Left Card: Source (기준 파일) -->
+<div class="bg-surface-container-lowest border border-[#e2e8f0] rounded-xl overflow-hidden shadow-sm flex flex-col">
+<!-- Card Header -->
+<div class="p-3.5 border-b border-[#e2e8f0] bg-[#ffffff] flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<span class="px-2 py-0.5 rounded text-label-sm font-label-sm font-semibold bg-slate-100 text-slate-700 border border-slate-200">Source</span>
+<h2 class="text-headline-sm font-headline-sm text-[#0f172a]">기준 파일</h2>
+<span class="text-body-sm font-body-sm text-[#64748b]">|</span>
+<div class="flex items-center gap-1.5 text-body-sm font-body-sm text-[#334155] font-medium">
+<span class="material-symbols-outlined text-[16px] text-slate-500">description</span>
+<span class="font-mono-code">source.csv</span>
+<span class="text-[#94a3b8] text-label-sm">(142 KB)</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-label-md font-label-md text-[#475569] bg-slate-50 px-2 py-1 rounded border border-slate-200">
+<strong class="text-[#0f172a]">1,242</strong>행 · <strong class="text-[#0f172a]">7</strong>개 컬럼
+            </span>
+<button class="px-2.5 py-1 text-label-md font-label-md bg-white text-[#334155] border border-[#cbd5e1] rounded hover:bg-slate-50 transition-colors duration-150 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">file_upload</span>
+              파일 변경
+            </button>
+</div>
+</div>
+<!-- Preview Toggle Area (Expanded) -->
+<div class="border-b border-[#f1f5f9] bg-[#fbfcfe]">
+<div class="px-3.5 py-2 flex items-center justify-between border-b border-[#f1f5f9]">
+<span class="text-label-sm font-label-sm text-[#475569] uppercase font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px] text-indigo-600">table_rows</span>
+              데이터 미리보기 (상위 3건)
+            </span>
+<span class="text-label-sm font-label-sm text-[#94a3b8]">UTF-8 · COMMA_DELIMITED</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-tabular-data font-tabular-data text-left border-collapse">
+<thead>
+<tr class="bg-[#f8fafc] text-label-sm font-label-sm text-[#475569] border-b border-[#e2e8f0]">
+<th class="py-1 px-3 w-8 text-center text-slate-400">#</th>
+<th class="py-1 px-3 font-semibold">id</th>
+<th class="py-1 px-3 font-semibold">user_name</th>
+<th class="py-1 px-3 font-semibold">email</th>
+<th class="py-1 px-3 font-semibold">plan_tier</th>
+<th class="py-1 px-3 font-semibold">amount</th>
+<th class="py-1 px-3 font-semibold">status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#f1f5f9] text-[#0f172a]">
+<tr class="hover:bg-slate-50">
+<td class="py-1.5 px-3 text-center text-[#94a3b8] font-mono-code text-[11px]">1</td>
+<td class="py-1.5 px-3 font-mono-code font-medium">USR-1082</td>
+<td class="py-1.5 px-3">김민준</td>
+<td class="py-1.5 px-3 text-slate-600">minjun.kim@example.kr</td>
+<td class="py-1.5 px-3"><span class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700">BASIC</span></td>
+<td class="py-1.5 px-3 text-right font-mono-code">49,000</td>
+<td class="py-1.5 px-3"><span class="text-emerald-700 text-[11px] font-semibold">ACTIVE</span></td>
+</tr>
+<tr class="hover:bg-slate-50 bg-[#fafcff]">
+<td class="py-1.5 px-3 text-center text-[#94a3b8] font-mono-code text-[11px]">2</td>
+<td class="py-1.5 px-3 font-mono-code font-medium">USR-1083</td>
+<td class="py-1.5 px-3">이서연</td>
+<td class="py-1.5 px-3 text-slate-600">sy.lee@example.kr</td>
+<td class="py-1.5 px-3"><span class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700">PRO</span></td>
+<td class="py-1.5 px-3 text-right font-mono-code">99,000</td>
+<td class="py-1.5 px-3"><span class="text-emerald-700 text-[11px] font-semibold">ACTIVE</span></td>
+</tr>
+<tr class="hover:bg-slate-50">
+<td class="py-1.5 px-3 text-center text-[#94a3b8] font-mono-code text-[11px]">3</td>
+<td class="py-1.5 px-3 font-mono-code font-medium">USR-1084</td>
+<td class="py-1.5 px-3">박도윤</td>
+<td class="py-1.5 px-3 text-slate-600">doyun.park@example.kr</td>
+<td class="py-1.5 px-3"><span class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700">ENTERPRISE</span></td>
+<td class="py-1.5 px-3 text-right font-mono-code">189,000</td>
+<td class="py-1.5 px-3"><span class="text-slate-500 text-[11px]">PAUSED</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- SQL로 가공 Block (Expanded) -->
+<div class="p-3.5 bg-white border-t border-[#f1f5f9] flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-indigo-600">code</span>
+<span class="text-label-md font-label-md text-[#0f172a] font-semibold">SQL로 가공</span>
+<span class="text-label-sm font-label-sm text-[#64748b] bg-slate-100 px-1.5 py-0.2 rounded font-mono-code">DuckDB-WASM</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-label-sm font-label-sm text-[#475569]">임시 테이블명:</span>
+<input class="h-6 w-28 text-label-sm font-mono-code px-2 py-0.5 rounded border border-[#cbd5e1] bg-slate-50 text-[#0f172a] focus:ring-1 focus:ring-primary focus:border-primary" type="text" value="source_tbl"/>
+</div>
+</div>
+<div class="relative">
+<textarea class="w-full font-mono-code text-code-md text-[#1e293b] bg-[#f8fafc] border border-[#cbd5e1] rounded-md p-2 resize-none focus:outline-none focus:border-indigo-600 leading-tight" rows="2">SELECT id, user_name, LOWER(email) AS email, plan_tier, amount, status FROM source WHERE status != 'DELETED';</textarea>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="text-[11px] text-[#64748b]">WHERE 조건절로 삭제 상태 제외 후 인덱싱</span>
+<div class="flex items-center gap-2">
+<button class="px-2.5 py-1 text-label-sm font-label-sm text-[#475569] hover:bg-slate-100 rounded transition-colors duration-150">초기화</button>
+<button class="px-3 py-1 text-label-sm font-label-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium transition-colors duration-150 shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">play_arrow</span>
+                쿼리 적용
+              </button>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Card: Target (비교 파일) -->
+<div class="bg-surface-container-lowest border border-[#e2e8f0] rounded-xl overflow-hidden shadow-sm flex flex-col">
+<!-- Card Header -->
+<div class="p-3.5 border-b border-[#e2e8f0] bg-[#ffffff] flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<span class="px-2 py-0.5 rounded text-label-sm font-label-sm font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Target</span>
+<h2 class="text-headline-sm font-headline-sm text-[#0f172a]">비교 파일</h2>
+<span class="text-body-sm font-body-sm text-[#64748b]">|</span>
+<div class="flex items-center gap-1.5 text-body-sm font-body-sm text-[#334155] font-medium">
+<span class="material-symbols-outlined text-[16px] text-slate-500">description</span>
+<span class="font-mono-code">target.csv</span>
+<span class="text-[#94a3b8] text-label-sm">(158 KB)</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-label-md font-label-md text-[#475569] bg-slate-50 px-2 py-1 rounded border border-slate-200">
+<strong class="text-[#0f172a]">1,270</strong>행 · <strong class="text-[#0f172a]">7</strong>개 컬럼
+            </span>
+<button class="px-2.5 py-1 text-label-md font-label-md bg-white text-[#334155] border border-[#cbd5e1] rounded hover:bg-slate-50 transition-colors duration-150 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">file_upload</span>
+              파일 변경
+            </button>
+</div>
+</div>
+<!-- Preview Toggle Area (Expanded) -->
+<div class="border-b border-[#f1f5f9] bg-[#fbfcfe]">
+<div class="px-3.5 py-2 flex items-center justify-between border-b border-[#f1f5f9]">
+<span class="text-label-sm font-label-sm text-[#475569] uppercase font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px] text-indigo-600">table_rows</span>
+              데이터 미리보기 (상위 3건)
+            </span>
+<span class="text-label-sm font-label-sm text-[#94a3b8]">UTF-8 · COMMA_DELIMITED</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-tabular-data font-tabular-data text-left border-collapse">
+<thead>
+<tr class="bg-[#f8fafc] text-label-sm font-label-sm text-[#475569] border-b border-[#e2e8f0]">
+<th class="py-1 px-3 w-8 text-center text-slate-400">#</th>
+<th class="py-1 px-3 font-semibold">id</th>
+<th class="py-1 px-3 font-semibold">user_name</th>
+<th class="py-1 px-3 font-semibold">email</th>
+<th class="py-1 px-3 font-semibold">plan_tier</th>
+<th class="py-1 px-3 font-semibold">amount</th>
+<th class="py-1 px-3 font-semibold">status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#f1f5f9] text-[#0f172a]">
+<tr class="hover:bg-slate-50">
+<td class="py-1.5 px-3 text-center text-[#94a3b8] font-mono-code text-[11px]">1</td>
+<td class="py-1.5 px-3 font-mono-code font-medium">USR-1082</td>
+<td class="py-1.5 px-3">김민준</td>
+<td class="py-1.5 px-3 text-slate-600">minjun.kim@example.kr</td>
+<td class="py-1.5 px-3"><span class="px-1.5 py-0.5 rounded text-[11px] bg-amber-50 text-amber-800 border border-amber-200 font-semibold">ENTERPRISE</span></td>
+<td class="py-1.5 px-3 text-right font-mono-code text-amber-700 font-medium">189,000</td>
+<td class="py-1.5 px-3"><span class="text-emerald-700 text-[11px] font-semibold">ACTIVE</span></td>
+</tr>
+<tr class="hover:bg-slate-50 bg-[#fafcff]">
+<td class="py-1.5 px-3 text-center text-[#94a3b8] font-mono-code text-[11px]">2</td>
+<td class="py-1.5 px-3 font-mono-code font-medium">USR-1083</td>
+<td class="py-1.5 px-3">이서연</td>
+<td class="py-1.5 px-3 text-slate-600">sy.lee@example.kr</td>
+<td class="py-1.5 px-3"><span class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700">PRO</span></td>
+<td class="py-1.5 px-3 text-right font-mono-code">99,000</td>
+<td class="py-1.5 px-3"><span class="text-emerald-700 text-[11px] font-semibold">ACTIVE</span></td>
+</tr>
+<tr class="hover:bg-slate-50">
+<td class="py-1.5 px-3 text-center text-[#94a3b8] font-mono-code text-[11px]">3</td>
+<td class="py-1.5 px-3 font-mono-code font-medium">USR-1085</td>
+<td class="py-1.5 px-3">최윤아</td>
+<td class="py-1.5 px-3 text-slate-600">yuna.choi@example.kr</td>
+<td class="py-1.5 px-3"><span class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700">BASIC</span></td>
+<td class="py-1.5 px-3 text-right font-mono-code">49,000</td>
+<td class="py-1.5 px-3"><span class="text-emerald-700 text-[11px] font-semibold">ACTIVE</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- SQL로 가공 Block (Expanded) -->
+<div class="p-3.5 bg-white border-t border-[#f1f5f9] flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-indigo-600">code</span>
+<span class="text-label-md font-label-md text-[#0f172a] font-semibold">SQL로 가공</span>
+<span class="text-label-sm font-label-sm text-[#64748b] bg-slate-100 px-1.5 py-0.2 rounded font-mono-code">DuckDB-WASM</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-label-sm font-label-sm text-[#475569]">임시 테이블명:</span>
+<input class="h-6 w-28 text-label-sm font-mono-code px-2 py-0.5 rounded border border-[#cbd5e1] bg-slate-50 text-[#0f172a] focus:ring-1 focus:ring-primary focus:border-primary" type="text" value="target_tbl"/>
+</div>
+</div>
+<div class="relative">
+<textarea class="w-full font-mono-code text-code-md text-[#1e293b] bg-[#f8fafc] border border-[#cbd5e1] rounded-md p-2 resize-none focus:outline-none focus:border-indigo-600 leading-tight" rows="2">SELECT id, user_name, LOWER(email) AS email, plan_tier, amount, status FROM target;</textarea>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="text-[11px] text-[#64748b]">타겟 데이터 원본 스키마 매핑 유지</span>
+<div class="flex items-center gap-2">
+<button class="px-2.5 py-1 text-label-sm font-label-sm text-[#475569] hover:bg-slate-100 rounded transition-colors duration-150">초기화</button>
+<button class="px-3 py-1 text-label-sm font-label-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium transition-colors duration-150 shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">play_arrow</span>
+                쿼리 적용
+              </button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 2: Column Mapping & Key Validation -->
+<section class="bg-surface-container-lowest border border-[#e2e8f0] rounded-xl shadow-sm overflow-hidden">
+<!-- Section Header -->
+<div class="px-space-lg py-3 bg-[#ffffff] border-b border-[#e2e8f0] flex items-center justify-between">
+<div>
+<div class="flex items-center gap-2">
+<span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">02</span>
+<h3 class="text-headline-sm font-headline-sm text-[#0f172a]">컬럼 매핑 및 비교 규칙 설정</h3>
+</div>
+<p class="text-body-sm font-body-sm text-[#64748b] mt-0.5">기본 식별자(KEY)를 기준으로 레코드를 매칭하고 필드별 검증 규칙을 적용합니다.</p>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-label-sm font-label-sm">
+<span class="material-symbols-outlined text-[15px] text-emerald-600">verified</span>
+            중복 키 없음 (1,242건 고유) 검증 완료
+          </div>
+<button class="px-3 py-1.5 text-label-md font-label-md bg-white border border-[#cbd5e1] hover:bg-slate-50 text-[#0f172a] rounded transition-colors flex items-center gap-1 shadow-2xs">
+<span class="material-symbols-outlined text-[16px] text-slate-500">task_alt</span>
+            키 유효성 재검증
+          </button>
+</div>
+</div>
+<!-- Mapping Table -->
+<div class="overflow-x-auto">
+<table class="w-full text-tabular-data font-tabular-data text-left border-collapse">
+<thead>
+<tr class="bg-[#f8fafc] text-label-sm font-label-sm text-[#475569] border-b border-[#cbd5e1]">
+<th class="py-2.5 px-4 w-28 text-center font-semibold">KEY 여부</th>
+<th class="py-2.5 px-4 font-semibold">기준 컬럼 (Source)</th>
+<th class="py-2.5 px-2 w-12 text-center font-semibold text-slate-400">매핑</th>
+<th class="py-2.5 px-4 font-semibold">비교 컬럼 (Target)</th>
+<th class="py-2.5 px-4 font-semibold">비교 검증 규칙</th>
+<th class="py-2.5 px-4 w-16 text-center font-semibold">작업</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#f1f5f9] text-[#0f172a]">
+<!-- Row 1: Key -->
+<tr class="hover:bg-indigo-50/30 bg-indigo-50/10">
+<td class="py-2.5 px-4 text-center">
+<label class="inline-flex items-center gap-1.5 cursor-pointer">
+<input checked="" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" type="checkbox"/>
+<span class="text-label-sm font-label-sm font-bold text-indigo-700">KEY</span>
+</label>
+</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-semibold text-[#0f172a]">id</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(정수)</span>
+</td>
+<td class="py-2.5 px-2 text-center text-slate-400 text-[14px]">⇄</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-semibold text-[#0f172a]">id</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(정수)</span>
+</td>
+<td class="py-2.5 px-4">
+<select class="h-8 text-body-sm font-body-sm bg-white border border-[#cbd5e1] rounded px-2.5 py-1 text-[#0f172a] focus:ring-1 focus:ring-indigo-600 w-72">
+<option selected="">완전 일치 (Exact Match)</option>
+<option>공백 및 대소문자 무시 (Trim &amp; Ignore Case)</option>
+<option>숫자 오차 허용 (오차 범위 설정)</option>
+</select>
+</td>
+<td class="py-2.5 px-4 text-center">
+<button class="text-slate-400 hover:text-slate-600 p-1 rounded">
+<span class="material-symbols-outlined text-[16px]">close</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-slate-50">
+<td class="py-2.5 px-4 text-center">
+<input class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" type="checkbox"/>
+</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">user_name</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-2 text-center text-slate-400 text-[14px]">⇄</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">user_name</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-4">
+<select class="h-8 text-body-sm font-body-sm bg-white border border-[#cbd5e1] rounded px-2.5 py-1 text-[#0f172a] focus:ring-1 focus:ring-indigo-600 w-72">
+<option>완전 일치 (Exact Match)</option>
+<option selected="">공백 및 대소문자 무시 (Trim &amp; Ignore Case)</option>
+<option>정규표현식 변환 후 비교</option>
+</select>
+</td>
+<td class="py-2.5 px-4 text-center">
+<button class="text-slate-400 hover:text-rose-600 p-1 rounded">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-slate-50 bg-[#fbfcfe]">
+<td class="py-2.5 px-4 text-center">
+<input class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" type="checkbox"/>
+</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">email</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-2 text-center text-slate-400 text-[14px]">⇄</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">email</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-4">
+<select class="h-8 text-body-sm font-body-sm bg-white border border-[#cbd5e1] rounded px-2.5 py-1 text-[#0f172a] focus:ring-1 focus:ring-indigo-600 w-72">
+<option selected="">완전 일치 (Exact Match)</option>
+<option>공백 및 대소문자 무시 (Trim &amp; Ignore Case)</option>
+<option>도메인 규격 정규화 비교</option>
+</select>
+</td>
+<td class="py-2.5 px-4 text-center">
+<button class="text-slate-400 hover:text-rose-600 p-1 rounded">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+</button>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-slate-50">
+<td class="py-2.5 px-4 text-center">
+<input class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" type="checkbox"/>
+</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">plan_tier</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-2 text-center text-slate-400 text-[14px]">⇄</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">plan_tier</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-4">
+<select class="h-8 text-body-sm font-body-sm bg-white border border-[#cbd5e1] rounded px-2.5 py-1 text-[#0f172a] focus:ring-1 focus:ring-indigo-600 w-72">
+<option selected="">완전 일치 (Exact Match)</option>
+<option>공백 및 대소문자 무시 (Trim &amp; Ignore Case)</option>
+</select>
+</td>
+<td class="py-2.5 px-4 text-center">
+<button class="text-slate-400 hover:text-rose-600 p-1 rounded">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+</button>
+</td>
+</tr>
+<!-- Row 5 -->
+<tr class="hover:bg-slate-50 bg-[#fbfcfe]">
+<td class="py-2.5 px-4 text-center">
+<input class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" type="checkbox"/>
+</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">amount</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(숫자)</span>
+</td>
+<td class="py-2.5 px-2 text-center text-slate-400 text-[14px]">⇄</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">amount</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(숫자)</span>
+</td>
+<td class="py-2.5 px-4">
+<select class="h-8 text-body-sm font-body-sm bg-white border border-[#cbd5e1] rounded px-2.5 py-1 text-[#0f172a] focus:ring-1 focus:ring-indigo-600 w-72">
+<option>완전 일치 (Exact Match)</option>
+<option selected="">숫자 오차 허용 (오차: 0)</option>
+<option>백분율 오차 허용 (±0.01%)</option>
+</select>
+</td>
+<td class="py-2.5 px-4 text-center">
+<button class="text-slate-400 hover:text-rose-600 p-1 rounded">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+</button>
+</td>
+</tr>
+<!-- Row 6 -->
+<tr class="hover:bg-slate-50">
+<td class="py-2.5 px-4 text-center">
+<input class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" type="checkbox"/>
+</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">status</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-2 text-center text-slate-400 text-[14px]">⇄</td>
+<td class="py-2.5 px-4">
+<span class="font-mono-code font-medium text-[#334155]">status</span>
+<span class="text-label-sm font-label-sm text-slate-500 ml-1">(문자열)</span>
+</td>
+<td class="py-2.5 px-4">
+<select class="h-8 text-body-sm font-body-sm bg-white border border-[#cbd5e1] rounded px-2.5 py-1 text-[#0f172a] focus:ring-1 focus:ring-indigo-600 w-72">
+<option selected="">완전 일치 (Exact Match)</option>
+<option>대소문자 무시 (Ignore Case)</option>
+</select>
+</td>
+<td class="py-2.5 px-4 text-center">
+<button class="text-slate-400 hover:text-rose-600 p-1 rounded">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Mapping Table Footer -->
+<div class="px-space-lg py-2.5 bg-[#f8fafc] border-t border-[#e2e8f0] flex items-center justify-between">
+<button class="px-3 py-1 text-label-md font-label-md text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50/50 rounded flex items-center gap-1 font-semibold transition-colors">
+<span class="material-symbols-outlined text-[16px]">add</span>
+          + 매핑 컬럼 추가
+        </button>
+<span class="text-label-sm font-label-sm text-slate-500">총 6개 컬럼 매핑 활성화 (식별 기준: 1개 기본키)</span>
+</div>
+</section>
+<!-- Section 3: Comparison & Verification Results Analysis -->
+<section class="flex flex-col gap-4">
+<!-- Section Header & Metrics Summary -->
+<div class="flex items-center justify-between">
+<div>
+<div class="flex items-center gap-2">
+<span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">03</span>
+<h3 class="text-headline-sm font-headline-sm text-[#0f172a]">비교 결과 분석</h3>
+</div>
+<p class="text-body-sm font-body-sm text-[#64748b] mt-0.5">
+            기준 파일 총 <strong class="text-[#0f172a]">1,242건</strong> · 비교 파일 총 <strong class="text-[#0f172a]">1,270건</strong> (합계 <strong class="text-indigo-600 font-semibold">1,280</strong> 고유 키)
+          </p>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-label-sm font-label-sm text-slate-500">정렬 기준:</span>
+<select class="h-7 text-label-sm font-label-sm bg-white border border-[#cbd5e1] rounded px-2 py-0 text-[#0f172a]">
+<option>상태순 (변경 &gt; 추가 &gt; 삭제 &gt; 일치)</option>
+<option>기본키 오름차순</option>
+<option>기본키 내림차순</option>
+</select>
+</div>
+</div>
+<!-- Status Filter Badges / Cards (5 Clickable Categories) -->
+<div class="grid grid-cols-5 gap-3">
+<!-- Card 1: 전체 -->
+<button class="p-3 rounded-lg border-2 border-slate-700 bg-white shadow-2xs text-left transition-all relative overflow-hidden">
+<div class="flex items-center justify-between mb-1">
+<span class="text-label-sm font-label-sm text-slate-600 font-semibold">전체</span>
+<span class="w-2 h-2 rounded-full bg-slate-900"></span>
+</div>
+<div class="text-headline-lg font-headline-lg text-[#0f172a] font-mono-code font-bold">1,280</div>
+<div class="text-[11px] text-slate-500 mt-0.5">총 검증 대상 레코드</div>
+</button>
+<!-- Card 2: 일치 -->
+<button class="p-3 rounded-lg border border-emerald-300 bg-[#ecfdf5] hover:bg-[#d1fae5] text-left transition-all">
+<div class="flex items-center justify-between mb-1">
+<span class="text-label-sm font-label-sm text-emerald-800 font-semibold">일치</span>
+<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-600 text-white">93.8%</span>
+</div>
+<div class="text-headline-lg font-headline-lg text-emerald-800 font-mono-code font-bold">1,200</div>
+<div class="text-[11px] text-emerald-700 mt-0.5">규칙 통과 항목</div>
+</button>
+<!-- Card 3: 변경 -->
+<button class="p-3 rounded-lg border border-amber-300 bg-[#fffbeb] hover:bg-[#fef3c7] text-left transition-all ring-2 ring-amber-400/50">
+<div class="flex items-center justify-between mb-1">
+<span class="text-label-sm font-label-sm text-amber-800 font-semibold">변경</span>
+<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-600 text-white">불일치</span>
+</div>
+<div class="text-headline-lg font-headline-lg text-amber-900 font-mono-code font-bold">42</div>
+<div class="text-[11px] text-amber-700 mt-0.5">필드 값 차이 발생</div>
+</button>
+<!-- Card 4: 추가 -->
+<button class="p-3 rounded-lg border border-blue-300 bg-[#eff6ff] hover:bg-[#dbeafe] text-left transition-all">
+<div class="flex items-center justify-between mb-1">
+<span class="text-label-sm font-label-sm text-blue-800 font-semibold">추가</span>
+<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-600 text-white">타겟 신규</span>
+</div>
+<div class="text-headline-lg font-headline-lg text-blue-900 font-mono-code font-bold">28</div>
+<div class="text-[11px] text-blue-700 mt-0.5">기준 파일에 없음</div>
+</button>
+<!-- Card 5: 삭제 -->
+<button class="p-3 rounded-lg border border-rose-300 bg-[#fff1f2] hover:bg-[#ffe4e6] text-left transition-all">
+<div class="flex items-center justify-between mb-1">
+<span class="text-label-sm font-label-sm text-rose-800 font-semibold">삭제</span>
+<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-600 text-white">기준 누락</span>
+</div>
+<div class="text-headline-lg font-headline-lg text-rose-900 font-mono-code font-bold">10</div>
+<div class="text-[11px] text-rose-700 mt-0.5">타겟 파일에서 부재</div>
+</button>
+</div>
+<!-- Dense Comparison Workspace (Two-column layout: 40% Diff List, 60% Field Inspector) -->
+<div class="grid grid-cols-12 gap-4 h-[440px]">
+<!-- Left: Diff Items List (5 of 12 cols ~= 41%) -->
+<div class="col-span-5 bg-surface-container-lowest border border-[#e2e8f0] rounded-xl flex flex-col overflow-hidden shadow-sm">
+<!-- Search & Filter bar -->
+<div class="p-2.5 border-b border-[#e2e8f0] bg-white flex items-center gap-2">
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-2 top-2 text-[16px] text-slate-400">search</span>
+<input class="w-full h-8 pl-8 pr-2 text-body-sm font-body-sm border border-[#cbd5e1] rounded bg-[#f8fafc] text-[#0f172a] focus:bg-white focus:ring-1 focus:ring-indigo-600" placeholder="키 또는 값 검색..." type="text"/>
+</div>
+<button class="h-8 px-2 text-label-sm font-label-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-200 flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px]">filter_list</span>
+              필터
+            </button>
+</div>
+<!-- Diff Record Scroll List -->
+<div class="flex-1 overflow-y-auto divide-y divide-[#f1f5f9]">
+<!-- Item 1 (Selected Active) -->
+<div class="p-3 bg-indigo-50/40 border-l-4 border-indigo-600 hover:bg-indigo-50/60 cursor-pointer transition-colors">
+<div class="flex items-center justify-between mb-1">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">변경</span>
+<span class="font-mono-code font-bold text-[#0f172a] text-body-sm">#USR-1082</span>
+<span class="text-body-sm font-medium text-slate-600">김민준</span>
+</div>
+<span class="text-[11px] text-slate-400 font-mono-code">ROW #1</span>
+</div>
+<div class="flex items-center justify-between text-[12px]">
+<span class="text-amber-800 font-medium">plan_tier, amount 변경됨</span>
+<span class="text-slate-400 text-[11px]">2개 필드 불일치</span>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="p-3 hover:bg-slate-50 cursor-pointer transition-colors">
+<div class="flex items-center justify-between mb-1">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">변경</span>
+<span class="font-mono-code font-bold text-[#0f172a] text-body-sm">#USR-1094</span>
+<span class="text-body-sm font-medium text-slate-600">정현우</span>
+</div>
+<span class="text-[11px] text-slate-400 font-mono-code">ROW #13</span>
+</div>
+<div class="flex items-center justify-between text-[12px]">
+<span class="text-amber-800 font-medium">status 변경됨 ('PAUSED' ➔ 'ACTIVE')</span>
+<span class="text-slate-400 text-[11px]">1개 필드 불일치</span>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="p-3 hover:bg-slate-50 cursor-pointer transition-colors">
+<div class="flex items-center justify-between mb-1">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300">추가</span>
+<span class="font-mono-code font-bold text-[#0f172a] text-body-sm">#USR-1105</span>
+<span class="text-body-sm font-medium text-slate-600">윤하은</span>
+</div>
+<span class="text-[11px] text-slate-400 font-mono-code">ROW #24</span>
+</div>
+<div class="flex items-center justify-between text-[12px]">
+<span class="text-blue-700">비교 파일에 새로 생성된 레코드</span>
+<span class="text-slate-400 text-[11px]">신규 등록</span>
+</div>
+</div>
+<!-- Item 4 -->
+<div class="p-3 hover:bg-slate-50 cursor-pointer transition-colors">
+<div class="flex items-center justify-between mb-1">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300">삭제</span>
+<span class="font-mono-code font-bold text-[#0f172a] text-body-sm">#USR-1120</span>
+<span class="text-body-sm font-medium text-slate-600">강예린</span>
+</div>
+<span class="text-[11px] text-slate-400 font-mono-code">ROW #39</span>
+</div>
+<div class="flex items-center justify-between text-[12px]">
+<span class="text-rose-700">비교 파일에서 누락/삭제됨</span>
+<span class="text-slate-400 text-[11px]">타겟 부재</span>
+</div>
+</div>
+<!-- Item 5 -->
+<div class="p-3 hover:bg-slate-50 cursor-pointer transition-colors">
+<div class="flex items-center justify-between mb-1">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">변경</span>
+<span class="font-mono-code font-bold text-[#0f172a] text-body-sm">#USR-1133</span>
+<span class="text-body-sm font-medium text-slate-600">오승우</span>
+</div>
+<span class="text-[11px] text-slate-400 font-mono-code">ROW #52</span>
+</div>
+<div class="flex items-center justify-between text-[12px]">
+<span class="text-amber-800 font-medium">email 변경됨</span>
+<span class="text-slate-400 text-[11px]">1개 필드 불일치</span>
+</div>
+</div>
+<!-- Item 6 -->
+<div class="p-3 hover:bg-slate-50 cursor-pointer transition-colors">
+<div class="flex items-center justify-between mb-1">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300">추가</span>
+<span class="font-mono-code font-bold text-[#0f172a] text-body-sm">#USR-1142</span>
+<span class="text-body-sm font-medium text-slate-600">배준호</span>
+</div>
+<span class="text-[11px] text-slate-400 font-mono-code">ROW #61</span>
+</div>
+<div class="flex items-center justify-between text-[12px]">
+<span class="text-blue-700">비교 파일에 새로 생성된 레코드</span>
+<span class="text-slate-400 text-[11px]">신규 등록</span>
+</div>
+</div>
+</div>
+<div class="p-2 bg-[#f8fafc] border-t border-[#e2e8f0] text-center text-label-sm font-label-sm text-slate-500">
+            총 80건 불일치 내역 중 1-6건 표시 중
+          </div>
+</div>
+<!-- Right: Field-Level Detailed Comparison (7 of 12 cols ~= 59%) -->
+<div class="col-span-7 bg-surface-container-lowest border border-[#e2e8f0] rounded-xl flex flex-col overflow-hidden shadow-sm">
+<!-- Inspector Header -->
+<div class="p-3 border-b border-[#e2e8f0] bg-white flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-indigo-600 text-[18px]">find_in_page</span>
+<h4 class="text-headline-sm font-headline-sm text-[#0f172a]">
+                레코드 상세 비교: <span class="font-mono-code text-indigo-700 font-bold">KEY #USR-1082</span> (김민준)
+              </h4>
+</div>
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 rounded text-label-sm font-label-sm bg-amber-50 text-amber-800 border border-amber-200 font-semibold">2개 불일치</span>
+<button class="p-1 hover:bg-slate-100 rounded text-slate-500" title="이전 레코드">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+</button>
+<button class="p-1 hover:bg-slate-100 rounded text-slate-500" title="다음 레코드">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Inspector Table -->
+<div class="flex-1 overflow-y-auto">
+<table class="w-full text-tabular-data font-tabular-data text-left border-collapse">
+<thead>
+<tr class="bg-[#f8fafc] text-label-sm font-label-sm text-[#475569] border-b border-[#cbd5e1]">
+<th class="py-2 px-3.5 w-32 font-semibold">필드명</th>
+<th class="py-2 px-3.5 font-semibold">기준 파일 (Source)</th>
+<th class="py-2 px-3.5 font-semibold">비교 파일 (Target)</th>
+<th class="py-2 px-3.5 w-28 text-center font-semibold">검증 결과</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#f1f5f9] text-[#0f172a]">
+<!-- Field: id -->
+<tr class="hover:bg-slate-50">
+<td class="py-2 px-3.5 font-mono-code font-semibold text-[#475569] bg-slate-50/50">id</td>
+<td class="py-2 px-3.5 font-mono-code text-slate-900">USR-1082</td>
+<td class="py-2 px-3.5 font-mono-code text-slate-900">USR-1082</td>
+<td class="py-2 px-3.5 text-center">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">일치</span>
+</td>
+</tr>
+<!-- Field: user_name -->
+<tr class="hover:bg-slate-50">
+<td class="py-2 px-3.5 font-mono-code font-semibold text-[#475569] bg-slate-50/50">user_name</td>
+<td class="py-2 px-3.5">김민준</td>
+<td class="py-2 px-3.5">김민준</td>
+<td class="py-2 px-3.5 text-center">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">일치</span>
+</td>
+</tr>
+<!-- Field: email -->
+<tr class="hover:bg-slate-50">
+<td class="py-2 px-3.5 font-mono-code font-semibold text-[#475569] bg-slate-50/50">email</td>
+<td class="py-2 px-3.5 font-mono-code text-slate-700">minjun.kim@example.kr</td>
+<td class="py-2 px-3.5 font-mono-code text-slate-700">minjun.kim@example.kr</td>
+<td class="py-2 px-3.5 text-center">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">일치</span>
+</td>
+</tr>
+<!-- Field: plan_tier (MODIFIED - amber highlight) -->
+<tr class="bg-[#fffbeb]/70 hover:bg-[#fef3c7] transition-colors border-l-4 border-l-amber-500">
+<td class="py-2 px-3.5 font-mono-code font-bold text-amber-900 bg-amber-50">plan_tier</td>
+<td class="py-2 px-3.5">
+<span class="px-2 py-0.5 rounded text-[12px] bg-white border border-amber-200 text-slate-600 line-through">BASIC</span>
+</td>
+<td class="py-2 px-3.5">
+<span class="px-2 py-0.5 rounded text-[12px] font-bold bg-amber-100 text-amber-900 border border-amber-300">ENTERPRISE</span>
+</td>
+<td class="py-2 px-3.5 text-center">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500 text-white shadow-2xs">변경됨</span>
+</td>
+</tr>
+<!-- Field: amount (MODIFIED - amber highlight with diff pill) -->
+<tr class="bg-[#fffbeb]/70 hover:bg-[#fef3c7] transition-colors border-l-4 border-l-amber-500">
+<td class="py-2 px-3.5 font-mono-code font-bold text-amber-900 bg-amber-50">amount</td>
+<td class="py-2 px-3.5 font-mono-code text-slate-600">
+<span class="line-through">49,000</span>
+</td>
+<td class="py-2 px-3.5 font-mono-code font-bold text-amber-900">
+                    189,000
+                    <span class="ml-2 px-1.5 py-0.2 rounded text-[10px] bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200">+140,000</span>
+</td>
+<td class="py-2 px-3.5 text-center">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500 text-white shadow-2xs">변경됨</span>
+</td>
+</tr>
+<!-- Field: status -->
+<tr class="hover:bg-slate-50">
+<td class="py-2 px-3.5 font-mono-code font-semibold text-[#475569] bg-slate-50/50">status</td>
+<td class="py-2 px-3.5"><span class="text-emerald-700 font-semibold">ACTIVE</span></td>
+<td class="py-2 px-3.5"><span class="text-emerald-700 font-semibold">ACTIVE</span></td>
+<td class="py-2 px-3.5 text-center">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">일치</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Inspector Footer metadata & action -->
+<div class="p-3 bg-[#f8fafc] border-t border-[#e2e8f0] flex items-center justify-between">
+<span class="text-label-sm font-label-sm text-slate-500">
+              최종 해시 검증값: <code class="font-mono-code text-[#334155]">CRC32: 0x9AF4B12D</code>
+</span>
+<div class="flex items-center gap-2">
+<button class="px-2.5 py-1 text-label-sm font-label-sm bg-white hover:bg-slate-100 text-slate-700 border border-[#cbd5e1] rounded">
+                클립보드로 JSON 복사
+              </button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom CSV Export Action Toolbar -->
+<div class="bg-surface-container-lowest border border-[#e2e8f0] rounded-xl p-4 shadow-sm flex items-center justify-between mb-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[20px] text-slate-500">settings_suggest</span>
+<div>
+<div class="text-label-md font-label-md text-[#0f172a]">내보내기 옵션: UTF-8 BOM 인코딩 · 쉼표(,) 구분</div>
+<div class="text-label-sm font-label-sm text-[#64748b]">엑셀(Excel) 한글 깨짐 방지용 BOM 헤더가 자동 추가됩니다.</div>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-4 py-2 text-label-md font-label-md bg-white hover:bg-slate-50 text-[#334155] border border-[#cbd5e1] rounded-lg transition-colors flex items-center gap-2 shadow-2xs font-semibold">
+<span class="material-symbols-outlined text-[18px]">file_download</span>
+          불일치 내역만 내보내기 (80건 CSV)
+        </button>
+<button class="px-5 py-2 text-label-md font-label-md bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-sm font-semibold">
+<span class="material-symbols-outlined text-[18px]">download</span>
+          전체 비교 결과 내보내기 (1,280건 CSV)
+        </button>
+</div>
+</div>
+</main>
+<!-- Sticky Micro Status Footer -->
+<footer class="w-full bg-[#f8fafc] border-t border-[#e2e8f0] py-2 px-space-xl">
+<div class="max-w-[1440px] mx-auto flex items-center justify-between text-[11px] text-[#64748b]">
+<div class="flex items-center gap-4">
+<span>모든 처리는 사용자 PC 내부 WebAssembly 엔진에서 수행되며 네트워크로 데이터가 발송되지 않습니다.</span>
+<span>·</span>
+<span class="text-emerald-700 font-semibold">네트워크 샌드박스 보안 격리됨</span>
+</div>
+<div class="font-mono-code text-[11px]">
+        BUILD: v2.4.1-OFFLINE-RELEASE
+      </div>
+</div>
+</footer>
+</body></html>
